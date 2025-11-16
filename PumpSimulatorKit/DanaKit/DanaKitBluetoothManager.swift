@@ -3,7 +3,7 @@ import CoreBluetooth
 import Foundation
 
 class DanaKitBluetoothManager : NSObject {
-    private let logger = Logger(subsystem: "com.bastiaanv.danaKit", category: "DanaKitBluetoothManager")
+    private let logger = PumpManagerLogger(subsystem: "com.bastiaanv.danaKit", category: "DanaKitBluetoothManager")
     
     private var manager: CBCentralManager?
     private var peripheralManager: CBPeripheralManager?
