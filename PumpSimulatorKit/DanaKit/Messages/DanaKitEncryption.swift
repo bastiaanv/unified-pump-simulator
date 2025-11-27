@@ -1,7 +1,9 @@
 import Foundation
 
 enum DanaKitEncryption {
-    static func decodePacketSerialNumber(data: Data, deviceName: String) -> Data {
+    static let logger = PumpManagerLogger(subsystem: "com.bastiaanv.danaKit", category: "DanaKitEncryption")
+    
+    static func xorPacketSerialNumber(data: Data, deviceName: String) -> Data {
         let tmp = Data([
             UInt8(deviceName.utf8CString[0]) &+ UInt8(deviceName.utf8CString[1]) &+ UInt8(deviceName.utf8CString[2]),
             UInt8(deviceName.utf8CString[3]) &+ UInt8(deviceName.utf8CString[4]) &+ UInt8(deviceName.utf8CString[5]) &+
@@ -15,6 +17,80 @@ enum DanaKitEncryption {
         }
 
         return buffer
+    }
+    
+    static func encodePacket(data: Data, type: UInt8, opCode: UInt8, pump: DanaPump, isEncryptionCommand: Bool, deviceName: String) -> Data {
+        var payload = Data([type, opCode])
+        payload.append(data)
+        
+        let crc = generateCrc(buffer: payload, enhancedEncryption: pump, isEncryptionCommand: isEncryptionCommand)
+        
+        var fullData = Data([
+            0xA5,
+            0xA5,
+            UInt8(data.count + 2),
+        ])
+        fullData.append(payload)
+        fullData.append(Data([
+            UInt8((crc >> 8) & 0xFF),
+            UInt8(crc & 0xFF),
+            0x5A,
+            0x5A
+        ]))
+        
+        logger.debug("Encoding value: \(fullData.hexString())")
+        return xorPacketSerialNumber(data: fullData, deviceName: deviceName)
+    }
+    
+    static func encrypt(data: Data, type: UInt8, opCode: UInt8, state: DanaKitState, isEncryptionCommand: Bool, deviceName: String) -> Data {
+        var output = encodePacket(
+            data: data,
+            type: type,
+            opCode: opCode,
+            pump: state.pumpModel,
+            isEncryptionCommand: isEncryptionCommand,
+            deviceName: deviceName
+        )
+        
+        if state.pumpModel == .DanaI {
+            if output[0] == 0xA5, output[1] == 0xA5 {
+                output[0] = 0xAA
+                output[1] = 0xAA
+            }
+            
+            if output[output.count - 2] == 0x5A, output[output.count - 1] == 0x5A {
+                output[output.count - 2] = 0xEE
+                output[output.count - 1] = 0xEE
+            }
+            
+            let bleKeys = state.pumpModel.getEncryptionKey()
+            for i in 0 ..< output.count {
+                output[i] &+= bleKeys[0]
+                output[i] = ((output[i] >> 4) & 0x0F) | (((output[i] & 0x0F) << 4) & 0xF0)
+                
+                output[i] &-= bleKeys[1]
+                output[i] ^= bleKeys[2]
+            }
+            
+        }
+        
+        return output
+    }
+    
+    static func decrypt(data: Data, state: DanaKitState) -> Data {
+        var output = data
+        if state.pumpModel == .DanaI {
+            let bleKeys = state.pumpModel.getEncryptionKey()
+            for i in 0 ..< output.count {
+                output[i] ^= bleKeys[2]
+                output[i] &+= bleKeys[1]
+
+                output[i] = ((output[i] >> 4) & 0xF) | (((output[i] & 0xF) << 4) & 0xFF)
+                output[i] &-= bleKeys[0]
+            }
+        }
+        
+        return output
     }
     
     static func generateCrc(buffer: Data, enhancedEncryption: DanaPump, isEncryptionCommand: Bool) -> UInt16 {
