@@ -197,6 +197,9 @@ extension DanaKitBluetoothManager {
         case DanaKitMessageType.OPCODE_REVIEW__INITIAL_SCREEN_INFORMATION:
             DanaKitMessages.processInitialScreenInformation(model)
             break
+        case DanaKitMessageType.OPCODE_OPTION__GET_PUMP_TIME:
+            
+            break
         default:
             logger.warning("Received unknown message - opCode: \(data[4])")
             return
