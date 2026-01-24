@@ -2,7 +2,7 @@ import Foundation
 
 extension DanaKitAuthMessages {
     static func processPumpCheck(_ model: DanaKitProcessAuthMessage) {
-        guard let receivedDeviceName = String(data: model.data.subdata(in: 5 ..< 15), encoding: .ascii) else {
+        guard let receivedDeviceName = String(data: model.data.subdata(in: 2 ..< 12), encoding: .ascii) else {
             logger.error("Could not decode device name from data")
             return
         }

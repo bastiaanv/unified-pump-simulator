@@ -29,29 +29,49 @@ public class PumpManagerLogger {
     func debug(_ message: String, _ file: String = #file, _ function: String = #function, _ line: Int = #line) {
         let (submessage, functionInfo) = formatMessage("DEBUG", file, function, line)
         logger.debug("[\(submessage)] \(functionInfo): \(message, privacy: .public)")
-        PumpManagerLogger.logLines.append(LogLine(level: "DEBUG", message: message, submessage: submessage, functionInfo: functionInfo))
+        PumpManagerLogger.logLines.append(LogLine(
+            level: "DEBUG",
+            message: message,
+            submessage: submessage,
+            functionInfo: functionInfo
+        ))
     }
 
     func info(_ message: String, _ file: String = #file, _ function: String = #function, _ line: Int = #line) {
         let (submessage, functionInfo) = formatMessage("INFO", file, function, line)
         logger.info("[\(submessage)] \(functionInfo): \(message, privacy: .public)")
-        PumpManagerLogger.logLines.append(LogLine(level: "INFO", message: message, submessage: submessage, functionInfo: functionInfo))
+        PumpManagerLogger.logLines.append(LogLine(
+            level: "INFO",
+            message: message,
+            submessage: submessage,
+            functionInfo: functionInfo
+        ))
     }
 
     func warning(_ message: String, _ file: String = #file, _ function: String = #function, _ line: Int = #line) {
         let (submessage, functionInfo) = formatMessage("WARNING", file, function, line)
         logger.warning("[\(submessage)] \(functionInfo): \(message, privacy: .public)")
-        PumpManagerLogger.logLines.append(LogLine(level: "WARNING", message: message, submessage: submessage, functionInfo: functionInfo))
+        PumpManagerLogger.logLines.append(LogLine(
+            level: "WARNING",
+            message: message,
+            submessage: submessage,
+            functionInfo: functionInfo
+        ))
     }
 
     func error(_ message: String, _ file: String = #file, _ function: String = #function, _ line: Int = #line) {
         let (submessage, functionInfo) = formatMessage("ERROR", file, function, line)
         logger.error("[\(submessage)] \(functionInfo): \(message, privacy: .public)")
-        PumpManagerLogger.logLines.append(LogLine(level: "ERROR", message: message, submessage: submessage, functionInfo: functionInfo))
+        PumpManagerLogger.logLines.append(LogLine(
+            level: "ERROR",
+            message: message,
+            submessage: submessage,
+            functionInfo: functionInfo
+        ))
     }
 
     private func formatMessage(_ lvl: String, _ file: String, _ function: String, _ line: Int) -> (String, String) {
-        return (
+        (
             "\(dateFormatter.string(from: Date())) \(lvl)",
             "\(file.file) - \(function)#\(line)"
         )

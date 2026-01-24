@@ -5,6 +5,7 @@ class MedtrumKitState {
         currentModelIndex = rawValue["currentModelIndex"] as? Int ?? 0
         activatedAt = rawValue["activatedAt"] as? Date
         expiresAt = rawValue["expiresAt"] as? Date
+        reservoirLevel = rawValue["reservoirLevel"] as? Double ?? 0
 
         if let rawBasal = rawValue["basal"] as? Data {
             do {
@@ -22,6 +23,7 @@ class MedtrumKitState {
         state["currentModelIndex"] = currentModelIndex
         state["activatedAt"] = activatedAt
         state["expiresAt"] = expiresAt
+        state["reservoirLevel"] = reservoirLevel
 
         do {
             state["basal"] = try JSONEncoder().encode(basal)
@@ -34,4 +36,5 @@ class MedtrumKitState {
     var activatedAt: Date?
     var expiresAt: Date?
     var basal: [BasalItem]
+    var reservoirLevel: Double
 }

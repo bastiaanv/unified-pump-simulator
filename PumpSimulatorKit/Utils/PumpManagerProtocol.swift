@@ -4,7 +4,7 @@ import SwiftUI
 public typealias StateRawValue = [String: Any]
 
 public protocol StorageDelegate {
-    func saveState(_ pumpManager: PumpManagerProtocol.Type, _ state: StateRawValue)
+    func saveState(_ pumpManager: PumpManagerProtocol.Type, _ state: PumpManagerProtocol)
 }
 
 public protocol PumpManagerProtocol {
@@ -14,6 +14,7 @@ public protocol PumpManagerProtocol {
     /// The title of the pumpManager
     var title: String { get }
 
+    var rawState: StateRawValue { get }
     var storageDelegate: StorageDelegate? { get set }
 
     /// Lists all of the capabities this pumpManager has
@@ -21,9 +22,13 @@ public protocol PumpManagerProtocol {
 
     var expiresAt: Date? { get }
     var activatedAt: Date? { get }
+    var batteryLevel: Double? { get }
+    var basalState: BasalState { get }
     var basal: [BasalItem] { get set }
+    var reservoirLevel: Double { get }
 
-    var currentModel: PumpModel { get }
+    var currentModel: PumpModel { get set }
+    var pumpNotes: String { get }
 
     init(rawValue: StateRawValue)
 
@@ -54,4 +59,10 @@ public struct BasalItem: Identifiable, Codable {
     public var id = UUID()
     public let start: TimeInterval
     public let rate: Double
+}
+
+public enum BasalState {
+    case suspended(start: Date)
+    case active(rate: Double)
+    case tempBasal(rate: Double, start: Date, end: Date)
 }

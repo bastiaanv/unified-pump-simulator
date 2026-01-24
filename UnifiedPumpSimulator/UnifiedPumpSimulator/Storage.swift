@@ -25,7 +25,8 @@ class Storage: StorageDelegate {
             let storageURL = localDocuments.appendingPathComponent(pumpManager.identifier + ".plist")
             let data = try Data(contentsOf: storageURL)
 
-            guard let value = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? StateRawValue else {
+            guard let value = try PropertyListSerialization.propertyList(from: data, options: [], format: nil) as? StateRawValue
+            else {
                 logger.warning("No data...")
                 return nil
             }
@@ -37,15 +38,15 @@ class Storage: StorageDelegate {
         }
     }
 
-    func saveState(_ pumpManager: PumpManagerProtocol.Type, _ state: StateRawValue) {
+    func saveState(_ pumpManagerType: PumpManagerProtocol.Type, _ pumpManager: PumpManagerProtocol) {
         guard let localDocuments = localDocuments else {
             logger.error("[saveState] No localDocuments URL available...")
             return
         }
 
         do {
-            let storageURL = localDocuments.appendingPathComponent(pumpManager.identifier + ".plist")
-            let data = try PropertyListSerialization.data(fromPropertyList: state, format: .binary, options: 0)
+            let storageURL = localDocuments.appendingPathComponent(pumpManagerType.identifier + ".plist")
+            let data = try PropertyListSerialization.data(fromPropertyList: pumpManager.rawState, format: .binary, options: 0)
             try data.write(to: storageURL, options: .atomic)
         } catch {
             logger.error("Got error during state saving: \(error.localizedDescription)")

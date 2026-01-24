@@ -30,7 +30,7 @@ extension DanaKitMessages {
             UInt8((reservoir >> 8) & 0xFF),
             UInt8(basalRate & 0xFF),
             UInt8((basalRate >> 8) & 0xFF),
-            tempBasalPercent, // Not used
+            UInt8(tempBasalPercent & 0xFF), // Not used
             battery,
             UInt8(extendedBolusAbsoluteRemaining & 0xFF), // Not used
             UInt8((extendedBolusAbsoluteRemaining >> 8) & 0xFF), // Not used

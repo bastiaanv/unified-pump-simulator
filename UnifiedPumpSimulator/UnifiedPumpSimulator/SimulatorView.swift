@@ -11,20 +11,22 @@ struct SimulatorView: View {
                     PumpSelector
                     Divider()
                     PumpState
+                    Divider()
                 }
             }
             .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
 
+            Divider()
             LoggerView
         }
         .onDisappear {
             viewModel.pumpManager.stop()
+            viewModel.simulatorRunning = false
         }
         .navigationTitle("Unified pump simulator - " + viewModel.pumpManager.title)
     }
 
-    @ViewBuilder
-    var PumpSelector: some View {
+    @ViewBuilder var PumpSelector: some View {
         VStack {
             viewModel.currentPump.image
                 .resizable()
@@ -56,21 +58,71 @@ struct SimulatorView: View {
                         .padding(.horizontal, 12)
                         .padding(.vertical, 6)
                 }
-                .buttonStyle(BlueButtonStyle(primaryColor: Color.primary))
+                .buttonStyle(BlueButtonStyle(primaryColor: Color.red))
             }
         }
         .frame(maxWidth: 200)
     }
 
-    @ViewBuilder
-    var PumpState: some View {
-        VStack {
-//            Text(LocalizedString)
+    @ViewBuilder var PumpState: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Pump Status")
+                .font(.title3)
+                .bold()
+
+            HStack(spacing: 5) {
+                Image(systemName: "cross.vial.fill")
+                    .font(.callout)
+                    .foregroundStyle(.blue)
+
+                Text("Reservoir level:")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                Text("\(viewModel.reservoirLevel)U")
+                    .foregroundStyle(.primary)
+            }
+
+            HStack(spacing: 5) {
+                Image(systemName: viewModel.basalIcon)
+                    .font(.callout)
+                    .foregroundStyle(.blue)
+
+                Text("Basal state:")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+
+                Text(viewModel.basalState)
+                    .foregroundStyle(.primary)
+            }
+
+            if !viewModel.batteryLevel.isEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: "battery.100percent")
+                        .font(.callout)
+                        .foregroundStyle(.blue)
+
+                    Text("Battery level:")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    Text(viewModel.batteryLevel)
+                        .foregroundStyle(.primary)
+                }
+            }
+
+            Spacer()
+            Text("Pump Notes")
+                .font(.title3)
+                .bold()
+
+            Text(viewModel.pumpNotes)
+                .foregroundStyle(.primary)
         }
+        .padding(.all, 10)
     }
 
-    @ViewBuilder
-    var LoggerView: some View {
+    @ViewBuilder var LoggerView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 5) {
                 ForEach($viewModel.logLines) { line in

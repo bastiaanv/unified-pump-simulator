@@ -10,12 +10,36 @@ class SimulatorViewModel: ObservableObject {
     @Published var currentPumpIndex: Int = 0 {
         didSet {
             if let selectedPump = supportedPumpModels.first(where: { $0.index == currentPumpIndex }) {
-                currentPump = selectedPump
+                DispatchQueue.main.async {
+                    self.currentPump = selectedPump
+                    self.pumpManager.currentModel = selectedPump
+                    self.pumpNotes = self.pumpManager.pumpNotes
+                }
             }
         }
     }
 
-    let pumpManager: PumpManagerProtocol
+    @Published var reservoirLevel: String = "0"
+    @Published var basalState: String = ""
+    @Published var basalIcon: String = "play.fill"
+    @Published var batteryLevel: String = ""
+    @Published var pumpNotes: String = ""
+
+    let integerFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 0
+        return formatter
+    }()
+
+    let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .medium
+        return formatter
+    }()
+
+    let storage = Storage()
+    var pumpManager: PumpManagerProtocol
 
     init(pumpManager: PumpManagerProtocol) {
         self.pumpManager = pumpManager
@@ -24,7 +48,10 @@ class SimulatorViewModel: ObservableObject {
         currentPump = pumpManager.currentModel
         currentPumpIndex = currentPump.index
 
+        self.pumpManager.storageDelegate = self
         PumpManagerLogger.addObserver(self)
+
+        updateState(pumpManager: pumpManager)
     }
 
     func startSimulator() {
@@ -35,6 +62,45 @@ class SimulatorViewModel: ObservableObject {
     func stopSimulator() {
         pumpManager.stop()
         simulatorRunning = false
+    }
+}
+
+extension SimulatorViewModel: StorageDelegate {
+    func saveState(
+        _ pumpManagerType: any PumpSimulatorKit.PumpManagerProtocol.Type,
+        _ pumpManager: any PumpSimulatorKit.PumpManagerProtocol
+    ) {
+        storage.saveState(pumpManagerType, pumpManager)
+        updateState(pumpManager: pumpManager)
+    }
+
+    func updateState(pumpManager: any PumpManagerProtocol) {
+        DispatchQueue.main.async {
+            self.pumpNotes = self.pumpManager.pumpNotes
+            self.reservoirLevel = self.integerFormatter.string(from: pumpManager.reservoirLevel as NSNumber) ?? "0"
+
+            if let batteryPercentage = pumpManager.batteryLevel,
+               let battery = self.integerFormatter.string(from: batteryPercentage as NSNumber)
+            {
+                self.batteryLevel = battery + "%"
+            } else {
+                self.batteryLevel = ""
+            }
+
+            switch pumpManager.basalState {
+            case let .suspended(start):
+                self.basalIcon = "pause.fill"
+                self.basalState = "Suspended - since: \(self.timeFormatter.string(from: start))"
+            case let .tempBasal(rate, _, _):
+                self.basalIcon = "bolt.fill"
+                self.basalState = "Temp basal - rate: \(rate) U/hr"
+            case let .active(rate):
+                self.basalIcon = "play.fill"
+                self.basalState = "Active - rate: \(rate) U/hr"
+            @unknown default:
+                break
+            }
+        }
     }
 }
 

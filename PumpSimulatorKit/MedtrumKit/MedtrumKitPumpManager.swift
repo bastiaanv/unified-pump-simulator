@@ -14,8 +14,20 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
     )
 
     public var currentModel: PumpModel {
-        capabilities.supportedModels.first(where: { $0.index == state.currentModelIndex }) ??
-            PumpModel(name: "200U", image: Image(imageName: "nano200"), index: 0)
+        get {
+            capabilities.supportedModels.first(where: { $0.index == state.currentModelIndex }) ?? PumpModel(
+                name: "200U",
+                image: Image(imageName: "nano200"),
+                index: 0
+            )
+        }
+        set {
+            state.currentModelIndex = newValue.index
+        }
+    }
+
+    public var pumpNotes: String {
+        "Pump base serial number: 4A12D828"
     }
 
     public var expiresAt: Date? {
@@ -30,11 +42,27 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         get { state.basal }
         set {
             state.basal = newValue
-            storageDelegate?.saveState(MedtrumKitPumpManager.self, state.getRaw())
+            notifyStateDidUpdate()
         }
     }
 
+    public var batteryLevel: Double? {
+        nil
+    }
+
+    public var reservoirLevel: Double {
+        state.reservoirLevel
+    }
+
+    public var basalState: BasalState {
+        // TODO:
+        .suspended(start: Date.now)
+    }
+
     public var storageDelegate: (any StorageDelegate)?
+    public var rawState: StateRawValue {
+        state.getRaw()
+    }
 
     private let state: MedtrumKitState
     public required init(rawValue: StateRawValue) {
@@ -47,5 +75,9 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
 
     public func stop() {
         // TODO: Stop adverting & kill bluetooth manager
+    }
+
+    func notifyStateDidUpdate() {
+        storageDelegate?.saveState(MedtrumKitPumpManager.self, self)
     }
 }

@@ -10,7 +10,7 @@ class DanaKitBluetoothManager: NSObject {
     private var peripheralManager: CBPeripheralManager?
     private let managerQueue = DispatchQueue(label: "com.DanaKit.bluetoothManagerQueue", qos: .unspecified)
 
-    private let LOCAL_DEVICE_NAME = "MT" // "XXX00000XX"
+    let LOCAL_DEVICE_NAME = "VJX00016FI" // "XXX00000XX"
     private let SERVICE_UUID = CBUUID(string: "FFF0")
     private let SUBSCRIPTION_CHAR_UUID = CBUUID(string: "FFF1")
     private var SUBSCRIPTION_CHARACTERISTIC: CBMutableCharacteristic
@@ -109,7 +109,8 @@ extension DanaKitBluetoothManager: CBPeripheralManagerDelegate {
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
         for item in requests {
             guard item.characteristic.uuid == WRITE_CHAR_UUID else {
-                logger.error("Received write on wrong characteristic - UUID: \(item.characteristic.uuid.uuidString), Service uuid: \(item.characteristic.service?.uuid.uuidString ?? "nil")")
+                let message = "Received write on wrong characteristic - UUID: \(item.characteristic.uuid.uuidString), Service uuid: \(item.characteristic.service?.uuid.uuidString ?? "nil")"
+                logger.error(message)
                 return
             }
 
@@ -119,7 +120,8 @@ extension DanaKitBluetoothManager: CBPeripheralManagerDelegate {
             }
 
             guard var value = item.value else {
-                logger.warning("EMPTY data received - UUID: \(item.characteristic.uuid.uuidString), Service uuid: \(item.characteristic.service?.uuid.uuidString ?? "nil")")
+                let message = "EMPTY data received - UUID: \(item.characteristic.uuid.uuidString), Service uuid: \(item.characteristic.service?.uuid.uuidString ?? "nil")"
+                logger.warning(message)
                 return
             }
 
@@ -144,10 +146,11 @@ extension DanaKitBluetoothManager: CBPeripheralManagerDelegate {
                 return
             }
 
+            let data = value.subdata(in: 3 ..< value.count - 2)
             if isEncryptionCommand {
-                processAuthMessage(peripheral, pumpManager, value)
+                processAuthMessage(peripheral, pumpManager, data)
             } else {
-                processMessage(peripheral, pumpManager, value)
+                processMessage(peripheral, pumpManager, data)
             }
         }
     }
@@ -165,7 +168,7 @@ extension DanaKitBluetoothManager {
             )
         )
 
-        switch data[4] {
+        switch data[1] {
         case DanaKitMessageType.OPCODE_ENCRYPTION__PUMP_CHECK:
             DanaKitAuthMessages.processPumpCheck(model)
         case DanaKitMessageType.OPCODE_ENCRYPTION__TIME_INFORMATION:
@@ -180,6 +183,7 @@ extension DanaKitBluetoothManager {
         let model = DanaKitProcessMessage(
             data: data,
             state: pumpManager.state,
+            pumpManager: pumpManager,
             deviceName: LOCAL_DEVICE_NAME,
             writeParams: DanaKitWriteParams(
                 characteristic: SUBSCRIPTION_CHARACTERISTIC,
@@ -187,17 +191,57 @@ extension DanaKitBluetoothManager {
             )
         )
 
-        switch data[4] {
+        switch data[1] {
         case DanaKitMessageType.OPCODE_ETC__KEEP_CONNECTION:
             DanaKitMessages.processKeepAlive(model)
         case DanaKitMessageType.OPCODE_REVIEW__INITIAL_SCREEN_INFORMATION:
             DanaKitMessages.processInitialScreenInformation(model)
         case DanaKitMessageType.OPCODE_OPTION__GET_PUMP_TIME:
-            break
+            DanaKitMessages.processGetTime(model)
+        case DanaKitMessageType.OPCODE_OPTION__GET_PUMP_UTC_AND_TIME_ZONE:
+            DanaKitMessages.processGetTimeWithUtc(model)
+        case DanaKitMessageType.OPCODE_OPTION__SET_PUMP_TIME:
+            DanaKitMessages.processSetTime(model)
+        case DanaKitMessageType.OPCODE_OPTION__SET_PUMP_UTC_AND_TIME_ZONE:
+            DanaKitMessages.processSetTimeWithUtc(model)
+        case DanaKitMessageType.OPCODE_OPTION__GET_USER_OPTION:
+            DanaKitMessages.processGetUserOptions(model)
+        case DanaKitMessageType.OPCODE_OPTION__SET_USER_OPTION:
+            DanaKitMessages.processSetUserOptions(model)
+        case DanaKitMessageType.OPCODE_REVIEW__SET_HISTORY_UPLOAD_MODE:
+            DanaKitMessages.processHistoryMode(model)
+        case DanaKitMessageType.OPCODE_REVIEW__ALARM,
+             DanaKitMessageType.OPCODE_REVIEW__ALL_HISTORY,
+             DanaKitMessageType.OPCODE_REVIEW__BASAL,
+             DanaKitMessageType.OPCODE_REVIEW__BLOOD_GLUCOSE,
+             DanaKitMessageType.OPCODE_REVIEW__BOLUS,
+             DanaKitMessageType.OPCODE_REVIEW__BOLUS_AVG,
+             DanaKitMessageType.OPCODE_REVIEW__CARBOHYDRATE,
+             DanaKitMessageType.OPCODE_REVIEW__DAILY,
+             DanaKitMessageType.OPCODE_REVIEW__PRIME,
+             DanaKitMessageType.OPCODE_REVIEW__REFILL,
+             DanaKitMessageType.OPCODE_REVIEW__SUSPEND,
+             DanaKitMessageType.OPCODE_REVIEW__TEMPORARY:
+            DanaKitMessages.processHistory(model)
+        case DanaKitMessageType.OPCODE_BOLUS__SET_STEP_BOLUS_START:
+            DanaKitMessages.processStartBolus(model)
+        case DanaKitMessageType.OPCODE_BOLUS__SET_STEP_BOLUS_STOP:
+            DanaKitMessages.processStopBolus(model)
+        case DanaKitMessageType.OPCODE_BASAL__APS_SET_TEMPORARY_BASAL,
+             DanaKitMessageType.OPCODE_BASAL__SET_TEMPORARY_BASAL:
+            DanaKitMessages.processTempBasalStart(model)
+        case DanaKitMessageType.OPCODE_BASAL__CANCEL_TEMPORARY_BASAL:
+            DanaKitMessages.processTempBasalEnd(model)
+        case DanaKitMessageType.OPCODE_BASAL__SET_SUSPEND_ON:
+            DanaKitMessages.processSuspend(model)
+        case DanaKitMessageType.OPCODE_BASAL__SET_SUSPEND_OFF:
+            DanaKitMessages.processResume(model)
         default:
-            logger.warning("Received unknown message - opCode: \(data[4])")
+            logger.warning("Received unknown message - opCode: \(data[1])")
             return
         }
+
+        pumpManager.notifyStateUpdate()
     }
 }
 
@@ -211,6 +255,7 @@ struct DanaKitProcessAuthMessage {
 struct DanaKitProcessMessage {
     let data: Data
     let state: DanaKitState
+    let pumpManager: DanaKitPumpManager
     let deviceName: String
     let writeParams: DanaKitWriteParams
 }
