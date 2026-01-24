@@ -11,7 +11,7 @@ extension DanaKitMessages {
             deviceName: model.deviceName
         )
         DanaKitWriter.write(message, model.writeParams)
-        
+
         logger.info("Processed Keep Alive message!")
     }
 }

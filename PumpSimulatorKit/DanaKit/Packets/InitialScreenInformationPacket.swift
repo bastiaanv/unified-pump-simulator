@@ -10,16 +10,16 @@ extension DanaKitMessages {
         let reservoir = UInt16(model.state.reservoirLevel * 100)
         let basalRate = UInt16((model.state.currentBasalRate ?? 0) * 100)
         let tempBasalPercent = model.state.tempBasalPercentage ?? 0
-        
+
         var status: UInt8 = 0x00
         if model.state.suspendedSince != nil {
             status += 0x01
         }
-        
+
         if model.state.tempBasalPercentage != nil {
             status += 0x10
         }
-        
+
         var content: [UInt8] = [
             status,
             UInt8(dailyTotalUnits & 0xFF), // Not used
@@ -37,13 +37,12 @@ extension DanaKitMessages {
             UInt8(insulinOnBoard & 0xFF), // Not used
             UInt8((insulinOnBoard >> 8) & 0xFF), // Not used
         ]
-        
+
         if model.state.pumpModel == .DanaI {
             // error state - Not used
             content.append(0x00)
         }
-        
-        
+
         let message = DanaKitEncryption.encrypt(
             data: Data(content),
             type: DanaKitMessageType.TYPE_RESPONSE,

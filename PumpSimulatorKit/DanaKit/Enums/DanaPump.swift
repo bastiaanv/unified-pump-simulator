@@ -5,7 +5,7 @@ enum DanaPump: UInt8 {
     case DanaRSv1 = 0
     case DanaRSv3 = 1
     case DanaI = 2
-    
+
     func getPumpModel() -> PumpModel {
         switch self {
         case .DanaRSv1:
@@ -16,7 +16,7 @@ enum DanaPump: UInt8 {
             return PumpModel(name: "Dana-I", image: Image(imageName: "danai"), index: 2)
         }
     }
-    
+
     func getHardwareModel() -> UInt8 {
         switch self {
         case .DanaRSv1:
@@ -27,7 +27,7 @@ enum DanaPump: UInt8 {
             return 9
         }
     }
-    
+
     func getProtocol() -> UInt8 {
         switch self {
         case .DanaRSv1:
@@ -38,7 +38,7 @@ enum DanaPump: UInt8 {
             return 19
         }
     }
-    
+
     func getBle5Keys() -> Data {
         switch self {
         case .DanaRSv1:
@@ -51,13 +51,13 @@ enum DanaPump: UInt8 {
             return Data([0x39, 0x39, 0x35, 0x33, 0x38, 0x33])
         }
     }
-    
+
     func getEncryptionKey() -> Data {
         if self != .DanaI {
             return Data([])
         }
-        
-        let ble5Key = self.getBle5Keys()
+
+        let ble5Key = getBle5Keys()
         let i1 = Int((ble5Key[0] - 0x30) * 10) &+ Int(ble5Key[1] - 0x30)
         let i2 = Int((ble5Key[2] - 0x30) * 10) &+ Int(ble5Key[3] - 0x30)
         let i3 = Int((ble5Key[4] - 0x30) * 10) &+ Int(ble5Key[5] - 0x30)
@@ -65,7 +65,7 @@ enum DanaPump: UInt8 {
         return Data([
             secondLvlEncryptionLookupShort[Int(i1)],
             secondLvlEncryptionLookupShort[Int(i2)],
-            secondLvlEncryptionLookupShort[Int(i3)]
+            secondLvlEncryptionLookupShort[Int(i3)],
         ])
     }
 }

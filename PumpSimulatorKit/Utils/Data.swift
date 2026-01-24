@@ -14,7 +14,7 @@ extension Data {
         guard hex.count / bytes.count == 2 else { return nil }
         self.init(bytes)
     }
-    
+
     func hexString() -> String {
         let format = "%02hhx"
         return map { String(format: format, $0) }.joined()

@@ -10,26 +10,26 @@ public protocol StorageDelegate {
 public protocol PumpManagerProtocol {
     /// The identifier of pumpManager
     static var identifier: String { get }
-    
+
     /// The title of the pumpManager
     var title: String { get }
-    
+
     var storageDelegate: StorageDelegate? { get set }
-    
+
     /// Lists all of the capabities this pumpManager has
     var capabilities: PumpManagerCapabitilties { get }
-    
+
     var expiresAt: Date? { get }
     var activatedAt: Date? { get }
     var basal: [BasalItem] { get set }
-    
+
     var currentModel: PumpModel { get }
-    
+
     init(rawValue: StateRawValue)
-    
+
     /// Start advertising bluetooth device
     func startAdvertising()
-    
+
     /// Stops everything related to this pumpManager.
     /// The pumpManager is put on the background
     func stop()
@@ -38,7 +38,7 @@ public protocol PumpManagerProtocol {
 public struct PumpManagerCapabitilties {
     /// A list of all supported pumps on this simulator
     public let supportedModels: [PumpModel]
-    
+
     /// Pods/patches can expire, classic pumps do not
     public let canExpire: Bool
 }
