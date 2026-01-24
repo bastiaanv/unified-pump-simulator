@@ -1,6 +1,6 @@
-import SwiftUI
-import SwiftData
 import PumpSimulatorKit
+import SwiftData
+import SwiftUI
 
 struct Managers: Identifiable {
     let id = UUID()
@@ -15,7 +15,7 @@ struct UnifiedPumpSimulatorApp: App {
         let storage = Storage()
         managers = [
             Managers(icon: "1.circle", manager: DanaKitPumpManager(rawValue: storage.getState(DanaKitPumpManager.self) ?? [:])),
-            Managers(icon: "2.circle", manager: MedtrumKitPumpManager(rawValue: storage.getState(MedtrumKitPumpManager.self) ?? [:]))
+            Managers(icon: "2.circle", manager: MedtrumKitPumpManager(rawValue: storage.getState(MedtrumKitPumpManager.self) ?? [:])),
         ]
     }
 

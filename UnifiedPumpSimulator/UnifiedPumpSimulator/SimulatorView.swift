@@ -1,9 +1,9 @@
-import SwiftUI
 import PumpSimulatorKit
+import SwiftUI
 
 struct SimulatorView: View {
     @ObservedObject var viewModel: SimulatorViewModel
-    
+
     var body: some View {
         VStack {
             VStack(alignment: .leading) {
@@ -14,7 +14,7 @@ struct SimulatorView: View {
                 }
             }
             .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
-            
+
             LoggerView
         }
         .onDisappear {
@@ -22,7 +22,7 @@ struct SimulatorView: View {
         }
         .navigationTitle("Unified pump simulator - " + viewModel.pumpManager.title)
     }
-    
+
     @ViewBuilder
     var PumpSelector: some View {
         VStack {
@@ -30,10 +30,10 @@ struct SimulatorView: View {
                 .resizable()
                 .aspectRatio(contentMode: .fill)
                 .frame(maxWidth: 100, maxHeight: 200)
-            
+
             Text("Select your pump model")
                 .bold()
-            
+
             Picker("", selection: $viewModel.currentPumpIndex) {
                 ForEach($viewModel.supportedPumpModels) { $item in
                     Text($item.wrappedValue.name).tag($item.wrappedValue.index)
@@ -42,7 +42,7 @@ struct SimulatorView: View {
             .disabled(viewModel.simulatorRunning)
             .pickerStyle(.segmented)
             .padding(.bottom, 10)
-            
+
             if !viewModel.simulatorRunning {
                 Button(action: { viewModel.startSimulator() }) {
                     Text("Start simulator")
@@ -61,15 +61,14 @@ struct SimulatorView: View {
         }
         .frame(maxWidth: 200)
     }
-    
+
     @ViewBuilder
     var PumpState: some View {
         VStack {
 //            Text(LocalizedString)
         }
     }
-    
-    
+
     @ViewBuilder
     var LoggerView: some View {
         ScrollView {
@@ -79,13 +78,13 @@ struct SimulatorView: View {
                         .textSelection(.enabled)
                         .padding(.horizontal)
                         .foregroundStyle(getColor(line.wrappedValue.level))
-                    
+
                     Text(line.wrappedValue.submessage + " - " + line.wrappedValue.functionInfo)
                         .textSelection(.enabled)
                         .padding(.horizontal)
                         .foregroundStyle(Color.gray)
                         .font(.footnote)
-                    
+
                     Divider()
                 }
             }
@@ -94,9 +93,9 @@ struct SimulatorView: View {
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         .background(.white)
     }
-    
+
     func getColor(_ value: String) -> Color {
-        switch (value) {
+        switch value {
         case "ERROR":
             return Color.red
         case "WARNING":
@@ -112,7 +111,7 @@ struct SimulatorView: View {
 
 struct BlueButtonStyle: ButtonStyle {
     let primaryColor: Color
-    
+
     func makeBody(configuration: Self.Configuration) -> some View {
         configuration.label
             .foregroundColor(configuration.isPressed ? primaryColor : Color.white)
@@ -121,10 +120,9 @@ struct BlueButtonStyle: ButtonStyle {
     }
 }
 
-
 #Preview {
     MainView(pumpManagers: [
         Managers(icon: "1.circle", manager: DanaKitPumpManager(rawValue: [:])),
-        Managers(icon: "2.circle", manager: MedtrumKitPumpManager(rawValue: [:]))
+        Managers(icon: "2.circle", manager: MedtrumKitPumpManager(rawValue: [:])),
     ])
 }

@@ -1,8 +1,8 @@
+import Combine
 import PumpSimulatorKit
 import SwiftUI
-import Combine
 
-class SimulatorViewModel : ObservableObject {
+class SimulatorViewModel: ObservableObject {
     @Published var logLines: [LogLine] = []
     @Published var simulatorRunning = false
     @Published var supportedPumpModels: [PumpModel] = []
@@ -14,31 +14,31 @@ class SimulatorViewModel : ObservableObject {
             }
         }
     }
-    
+
     let pumpManager: PumpManagerProtocol
-    
+
     init(pumpManager: PumpManagerProtocol) {
         self.pumpManager = pumpManager
-        
+
         supportedPumpModels = pumpManager.capabilities.supportedModels
         currentPump = pumpManager.currentModel
         currentPumpIndex = currentPump.index
-        
+
         PumpManagerLogger.addObserver(self)
     }
-    
+
     func startSimulator() {
         pumpManager.startAdvertising()
         simulatorRunning = true
     }
-    
+
     func stopSimulator() {
         pumpManager.stop()
         simulatorRunning = false
     }
 }
 
-extension SimulatorViewModel : LoggerObserver {
+extension SimulatorViewModel: LoggerObserver {
     func logsUpdated(_ lines: [PumpSimulatorKit.LogLine]) {
         DispatchQueue.main.async {
             self.logLines = lines.reversed()

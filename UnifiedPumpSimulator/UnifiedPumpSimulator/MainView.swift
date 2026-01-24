@@ -1,18 +1,16 @@
-import SwiftUI
 import PumpSimulatorKit
-
-
+import SwiftUI
 
 struct MainView: View {
     @State var pumpManagers: [Managers]
-    
+
     var body: some View {
         TabView {
             ForEach($pumpManagers) { $item in
                 SimulatorView(viewModel: SimulatorViewModel(pumpManager: $item.manager.wrappedValue))
-                .tabItem {
-                    Label($item.manager.wrappedValue.title, systemImage: $item.icon.wrappedValue)
-                }
+                    .tabItem {
+                        Label($item.manager.wrappedValue.title, systemImage: $item.icon.wrappedValue)
+                    }
             }
         }
         .tabViewStyle(.sidebarAdaptable)
@@ -22,6 +20,6 @@ struct MainView: View {
 #Preview {
     MainView(pumpManagers: [
         Managers(icon: "1.circle", manager: DanaKitPumpManager(rawValue: [:])),
-        Managers(icon: "2.circle", manager: MedtrumKitPumpManager(rawValue: [:]))
+        Managers(icon: "2.circle", manager: MedtrumKitPumpManager(rawValue: [:])),
     ])
 }
