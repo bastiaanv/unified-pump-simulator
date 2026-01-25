@@ -143,7 +143,6 @@ struct SimulatorView: View {
             .padding(.top, 5)
         }
         .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-        .background(.white)
     }
 
     func getColor(_ value: String) -> Color {
