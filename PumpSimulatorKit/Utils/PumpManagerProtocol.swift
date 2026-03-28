@@ -22,15 +22,16 @@ public protocol PumpManagerProtocol {
 
     var expiresAt: Date? { get }
     var activatedAt: Date? { get }
-    var batteryLevel: Double? { get }
+    var batteryLevel: String? { get }
     var basalState: BasalState { get }
     var basal: [BasalItem] { get set }
     var reservoirLevel: Double { get }
 
     var currentModel: PumpModel { get set }
     var pumpNotes: String { get }
+    var pumpState: String { get }
 
-    init(rawValue: StateRawValue)
+    init(rawValue: StateRawValue, bluetoothManager: PumpBluetoothmanager)
 
     /// Start advertising bluetooth device
     func startAdvertising()

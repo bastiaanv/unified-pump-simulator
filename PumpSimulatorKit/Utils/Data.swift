@@ -1,9 +1,9 @@
 import Foundation
 
 extension Data {
-    init?(hex: String) {
+    init(hex: String) {
         guard hex.count.isMultiple(of: 2) else {
-            return nil
+            fatalError("No a multiple of 2")
         }
 
         let chars = hex.map { $0 }
@@ -11,7 +11,9 @@ extension Data {
             .map { String(chars[$0]) + String(chars[$0 + 1]) }
             .compactMap { UInt8($0, radix: 16) }
 
-        guard hex.count / bytes.count == 2 else { return nil }
+        guard hex.count / bytes.count == 2 else {
+            fatalError("No a multiple of 2")
+        }
         self.init(bytes)
     }
 

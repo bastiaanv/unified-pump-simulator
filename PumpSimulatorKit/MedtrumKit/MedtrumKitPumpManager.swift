@@ -26,6 +26,10 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         }
     }
 
+    public var pumpState: String {
+        state.patchState.title
+    }
+
     public var pumpNotes: String {
         "Pump base serial number: 4A12D828"
     }
@@ -46,8 +50,8 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         }
     }
 
-    public var batteryLevel: Double? {
-        nil
+    public var batteryLevel: String? {
+        "\(state.voltageB)V"
     }
 
     public var reservoirLevel: Double {
@@ -55,8 +59,13 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
     }
 
     public var basalState: BasalState {
-        // TODO:
-        .suspended(start: Date.now)
+        // TODO: temp basal
+        if state.patchState == .suspended, let suspendedSince = state.suspendedSince {
+            return .suspended(start: suspendedSince)
+
+        } else {
+            return .active(rate: state.currentBaseBasalRate)
+        }
     }
 
     public var storageDelegate: (any StorageDelegate)?
@@ -64,17 +73,34 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         state.getRaw()
     }
 
-    private let state: MedtrumKitState
-    public required init(rawValue: StateRawValue) {
+    private let logger = PumpManagerLogger(subsystem: "com.bastiaanv.medtrumkit", category: "MedtrumKitPumpManager")
+    private let bluetooth: MedtrumKitBluetoothManager
+    let state: MedtrumKitState
+    var isRunning: Bool = false
+
+    public required init(rawValue: StateRawValue, bluetoothManager: PumpBluetoothmanager) {
         state = MedtrumKitState(rawValue: rawValue)
+        bluetooth = MedtrumKitBluetoothManager(pumpBluetoothManager: bluetoothManager)
+
+        bluetooth.pumpManagerDelegate = self
     }
 
     public func startAdvertising() {
-        // TODO:
+        if state.activatedAt == nil {
+            state.activatedAt = Date.now
+            state.patchState = .filled
+            notifyStateDidUpdate()
+        }
+
+        bluetooth.startAdvertising()
+        isRunning = true
     }
 
     public func stop() {
-        // TODO: Stop adverting & kill bluetooth manager
+        bluetooth.stopAdvertising()
+        isRunning = false
+
+        logger.info("MedtrumKit simulator has been stopped!")
     }
 
     func notifyStateDidUpdate() {

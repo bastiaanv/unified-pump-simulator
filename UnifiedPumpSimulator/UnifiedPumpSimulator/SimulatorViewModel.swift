@@ -24,6 +24,7 @@ class SimulatorViewModel: ObservableObject {
     @Published var basalIcon: String = "play.fill"
     @Published var batteryLevel: String = ""
     @Published var pumpNotes: String = ""
+    @Published var pumpState: String = ""
 
     let integerFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
@@ -77,12 +78,11 @@ extension SimulatorViewModel: StorageDelegate {
     func updateState(pumpManager: any PumpManagerProtocol) {
         DispatchQueue.main.async {
             self.pumpNotes = self.pumpManager.pumpNotes
+            self.pumpState = self.pumpManager.pumpState
             self.reservoirLevel = self.integerFormatter.string(from: pumpManager.reservoirLevel as NSNumber) ?? "0"
 
-            if let batteryPercentage = pumpManager.batteryLevel,
-               let battery = self.integerFormatter.string(from: batteryPercentage as NSNumber)
-            {
-                self.batteryLevel = battery + "%"
+            if let battery = pumpManager.batteryLevel {
+                self.batteryLevel = battery
             } else {
                 self.batteryLevel = ""
             }

@@ -70,6 +70,21 @@ struct SimulatorView: View {
                 .font(.title3)
                 .bold()
 
+            if !viewModel.pumpState.isEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.blue)
+
+                    Text("Pump state:")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    Text(viewModel.pumpState)
+                        .foregroundStyle(.primary)
+                }
+            }
+
             HStack(spacing: 5) {
                 Image(systemName: "cross.vial.fill")
                     .font(.callout)
@@ -169,11 +184,4 @@ struct BlueButtonStyle: ButtonStyle {
             .background(configuration.isPressed ? Color.white : primaryColor)
             .cornerRadius(6.0)
     }
-}
-
-#Preview {
-    MainView(pumpManagers: [
-        Managers(icon: "1.circle", manager: DanaKitPumpManager(rawValue: [:])),
-        Managers(icon: "2.circle", manager: MedtrumKitPumpManager(rawValue: [:])),
-    ])
 }

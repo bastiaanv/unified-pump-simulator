@@ -4,6 +4,13 @@ public class DanaKitPumpManager: PumpManagerProtocol {
     public static let identifier: String = "danakit"
     public let title: String = "DanaKit"
 
+    let integerFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 0
+        return formatter
+    }()
+
     public let capabilities: PumpManagerCapabitilties = .init(
         supportedModels: [
             DanaPump.DanaRSv3.getPumpModel(),
@@ -18,6 +25,10 @@ public class DanaKitPumpManager: PumpManagerProtocol {
     public var currentModel: PumpModel {
         get { state.pumpModel.getPumpModel() }
         set { state.pumpModel = DanaPump(rawValue: UInt8(newValue.index)) ?? .DanaI }
+    }
+
+    public var pumpState: String {
+        "Ready"
     }
 
     public var pumpNotes: String {
@@ -52,8 +63,8 @@ public class DanaKitPumpManager: PumpManagerProtocol {
         }
     }
 
-    public var batteryLevel: Double? {
-        Double(state.batteryPercentage)
+    public var batteryLevel: String? {
+        integerFormatter.string(from: state.batteryPercentage as NSNumber)
     }
 
     public var reservoirLevel: Double {
@@ -66,11 +77,13 @@ public class DanaKitPumpManager: PumpManagerProtocol {
 
     public var storageDelegate: (any StorageDelegate)?
 
-    let state: DanaKitState
     private let logger = PumpManagerLogger(subsystem: "com.bastiaanv.danaKit", category: "DanaKitBluetoothManager")
-    private let bluetooth = DanaKitBluetoothManager()
-    public required init(rawValue: StateRawValue) {
+    let state: DanaKitState
+    private let bluetooth: DanaKitBluetoothManager
+    public required init(rawValue: StateRawValue, bluetoothManager: PumpBluetoothmanager) {
         state = DanaKitState(rawValue: rawValue)
+        bluetooth = DanaKitBluetoothManager(pumpBluetoothManager: bluetoothManager)
+
         bluetooth.pumpManagerDelegate = self
     }
 
