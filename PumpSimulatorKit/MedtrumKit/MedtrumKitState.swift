@@ -13,6 +13,9 @@ class MedtrumKitState {
         bolusProgress = rawValue["bolusProgress"] as? Double
         bolusTotal = rawValue["bolusTotal"] as? Double
         primeProgress = rawValue["primeProgress"] as? UInt8
+        expirationTimer = rawValue["expirationTimer"] as? UInt8 ?? 1
+        hourlyMaxInsulin = rawValue["hourlyMaxInsulin"] as? UInt16 ?? 20
+        dailyMaxInsulin = rawValue["dailyMaxInsulin"] as? UInt16 ?? 180
 
         if let rawBasal = rawValue["basal"] as? Data {
             do {
@@ -24,12 +27,17 @@ class MedtrumKitState {
             basal = []
         }
 
-        patchState = .filled
-//        if let rawPatchState = rawValue["patchState"] as? PatchState.RawValue {
-//            patchState = PatchState(rawValue: rawPatchState) ?? .none
-//        } else {
-//            patchState = .none
-//        }
+        if let rawAlarmSettings = rawValue["alarmSettings"] as? AlarmSettings.RawValue {
+            alarmSettings = AlarmSettings(rawValue: rawAlarmSettings) ?? .None
+        } else {
+            alarmSettings = .None
+        }
+
+        if let rawPatchState = rawValue["patchState"] as? PatchState.RawValue {
+            patchState = PatchState(rawValue: rawPatchState) ?? .none
+        } else {
+            patchState = .none
+        }
     }
 
     func getRaw() -> StateRawValue {
@@ -46,6 +54,10 @@ class MedtrumKitState {
         state["bolusProgress"] = bolusProgress
         state["bolusTotal"] = bolusTotal
         state["primeProgress"] = primeProgress
+        state["expirationTimer"] = expirationTimer
+        state["alarmSettings"] = alarmSettings.rawValue
+        state["hourlyMaxInsulin"] = hourlyMaxInsulin
+        state["dailyMaxInsulin"] = dailyMaxInsulin
 
         do {
             state["basal"] = try JSONEncoder().encode(basal)
@@ -56,6 +68,8 @@ class MedtrumKitState {
 
     var currentModelIndex: Int
 
+    var patchId: UInt32 = 0
+    var patchSequence: UInt16 = 0
     var patchState: PatchState
 
     var activatedAt: Date?
@@ -83,6 +97,12 @@ class MedtrumKitState {
 
     var voltageA: Double = 6.1
     var voltageB: Double = 2.80
+
+    // Patch settings
+    var expirationTimer: UInt8 = 1
+    var alarmSettings: AlarmSettings = .None
+    var hourlyMaxInsulin: UInt16 = 20
+    var dailyMaxInsulin: UInt16 = 180
 
     var currentBaseBasalRate: Double {
         guard !basal.isEmpty else {

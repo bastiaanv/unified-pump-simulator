@@ -17,17 +17,12 @@ extension MedtrumKitBluetoothManager {
     }
 
     func writeResponse(data: Data, status: ResponseStatus, _ params: WriteResponseParam) {
-        guard let centrals = params.characteristic.subscribedCentrals, !centrals.isEmpty else {
-            logger.error("Cannot write value to device -> No subscribed centrals...")
-            return
-        }
-
         let messages = encodePacket(data, status: status, params.responseCode, params.messageId)
         for message in messages {
-            logger.info("Writing: \(message.hexString()) to: \(params.characteristic.uuid.uuidString)")
-            params.peripheralManager.updateValue(message, for: params.characteristic, onSubscribedCentrals: centrals)
-            Thread.sleep(forTimeInterval: .milliseconds(100))
+            writeQueue.append((message, params.characteristic))
         }
+
+        readyForNextMessage(params.peripheralManager)
     }
 
     private func encodePacket(_ data: Data, status: ResponseStatus, _ responseCode: UInt8, _ messageId: UInt8) -> [Data] {
@@ -35,13 +30,13 @@ extension MedtrumKitBluetoothManager {
             return [data]
         }
 
+        let data = status.rawValue.toData() + data
         var header = Data([
-            UInt8(data.count + 7),
+            UInt8(data.count + 5),
             responseCode,
             messageId,
             0, // pkgIndex
         ])
-        header.append(status.rawValue.toData())
 
         let tmp = header + data
         let totalCommand = tmp + Crc8.calculate(tmp)

@@ -11,6 +11,17 @@ extension UInt64 {
     }
 }
 
+extension UInt32 {
+    func toData() -> Data {
+        var output = Data(count: 4)
+        for i in 0 ..< 4 {
+            output[i] = UInt8((self >> (i * 8)) & 0xFF)
+        }
+
+        return output
+    }
+}
+
 extension UInt16 {
     func toData() -> Data {
         var output = Data(count: 2)

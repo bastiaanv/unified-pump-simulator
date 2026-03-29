@@ -11,6 +11,10 @@ class MedtrumKitBluetoothManager {
     private let WRITE_CHAR_UUID = CBUUID(string: "669a9101-0008-968f-e311-6050405558b3")
     private let WRITE_CHARACTERISTIC: CBMutableCharacteristic
 
+    var subscribedCentrals: [CBCentral] = []
+    var writeQueue: [(Data, CBMutableCharacteristic)] = []
+    private var buffer = Data()
+
     init(pumpBluetoothManager: PumpBluetoothmanager) {
         WRITE_CHARACTERISTIC = CBMutableCharacteristic(
             type: WRITE_CHAR_UUID,
@@ -44,6 +48,11 @@ class MedtrumKitBluetoothManager {
 
     func stopAdvertising() {
         pumpBluetoothManager.stopAdvertising()
+        MedtrumKitPackets.unscheduleUpdates()
+
+        subscribedCentrals.removeAll()
+        writeQueue.removeAll()
+        buffer = Data()
     }
 }
 
@@ -74,14 +83,27 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
             return
         }
 
-        logger.info("Received message: \(data.hexString())")
+        if buffer.isEmpty {
+            buffer.append(data.subdata(in: 0 ..< data.count - 1))
+            logger.info("Curretn data: \(buffer.hexString())")
+        } else {
+            buffer.append(data[4 ..< data.count - 1])
+        }
 
+        if buffer[0] != buffer.count {
+            logger.info("Message not complete...")
+            peripheralManager.respond(to: request, withResult: .success)
+
+            return
+        }
+
+        logger.info("Received message: \(buffer.hexString())")
         let param = MedtrumKitPackets.MedtrumKitPacketRequest(
-            data: data,
+            data: buffer,
             pumpManager: pumpManager,
             responseParam: WriteResponseParam(
-                responseCode: data[1],
-                messageId: data[2],
+                responseCode: buffer[1],
+                messageId: buffer[2],
                 characteristic: WRITE_CHARACTERISTIC,
                 peripheralManager: peripheralManager
             ),
@@ -102,11 +124,88 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
             MedtrumKitPackets.parseSubscribePacket(param, self)
         case CommandType.PRIME:
             MedtrumKitPackets.parsePrimePacket(param, self)
+        case CommandType.ACTIVATE:
+            MedtrumKitPackets.parseActivatePacket(param, self)
+        case CommandType.SET_TIME:
+            MedtrumKitPackets.parseSetTime(param, self)
+        case CommandType.GET_TIME:
+            MedtrumKitPackets.parseGetTime(param, self)
+        case CommandType.SET_TIME_ZONE:
+            MedtrumKitPackets.parseSetTimeZone(param, self)
+        case CommandType.SUSPEND_PUMP:
+            MedtrumKitPackets.parseSuspendPacket(param, self)
+        case CommandType.RESUME_PUMP:
+            MedtrumKitPackets.parseResumePacket(param, self)
+        case CommandType.STOP_PATCH:
+            MedtrumKitPackets.parseDeactivatePacket(param, self)
+        case CommandType.SET_TEMP_BASAL:
+            MedtrumKitPackets.parseTempBasalPacket(param, self)
+        case CommandType.CANCEL_TEMP_BASAL:
+            MedtrumKitPackets.parseStopTempBasalPacket(param, self)
         default:
-            logger.warning("Received unknown command: \(data[1])")
+            logger.warning("Received unknown command: \(buffer[1])")
         }
 
         peripheralManager.respond(to: request, withResult: .success)
+        buffer = Data()
+    }
+
+    func readyForNextMessage(_ peripheral: CBPeripheralManager) {
+        guard let item = writeQueue.first else {
+            return
+        }
+
+        guard let centrals = item.1.subscribedCentrals, !centrals.isEmpty else {
+            logger.error("Cannot write value to device -> No subscribed centrals...")
+            return
+        }
+
+        logger.info("Writing: \(item.0.hexString()), to: \(item.1.uuid.uuidString)")
+        guard peripheral.updateValue(item.0, for: item.1, onSubscribedCentrals: centrals) else {
+            return
+        }
+
+        writeQueue.removeFirst()
+        readyForNextMessage(peripheral)
+    }
+
+    func didReceiveSubscribe(central: CBCentral, peripheralManager: CBPeripheralManager) {
+        if subscribedCentrals.contains(central) {
+            return
+        }
+
+        subscribedCentrals.append(central)
+        if let pumpManager = pumpManagerDelegate, pumpManager.state.patchState == .active {
+            let param = MedtrumKitPackets.MedtrumKitPacketRequest(
+                data: buffer,
+                pumpManager: pumpManager,
+                responseParam: WriteResponseParam(
+                    responseCode: 0,
+                    messageId: 0,
+                    characteristic: WRITE_CHARACTERISTIC,
+                    peripheralManager: peripheralManager
+                ),
+                updateParam: WriteResponseParam(
+                    responseCode: 0,
+                    messageId: 0,
+                    characteristic: SUBSCRIPTION_CHARACTERISTIC,
+                    peripheralManager: peripheralManager
+                )
+            )
+
+            MedtrumKitPackets.scheduleUpdates(param, self)
+        }
+    }
+
+    func didUnsubscribe(central: CBCentral) {
+        guard let index = subscribedCentrals.firstIndex(of: central) else {
+            return
+        }
+
+        subscribedCentrals.remove(at: index)
+        if subscribedCentrals.isEmpty {
+            MedtrumKitPackets.unscheduleUpdates()
+        }
     }
 }
 

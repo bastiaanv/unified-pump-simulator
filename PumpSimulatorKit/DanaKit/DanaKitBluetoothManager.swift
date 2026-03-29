@@ -52,6 +52,10 @@ class DanaKitBluetoothManager {
 }
 
 extension DanaKitBluetoothManager: BluetoothManagerDelegate {
+    func readyForNextMessage(_: CBPeripheralManager) {}
+    func didReceiveSubscribe(central _: CBCentral, peripheralManager _: CBPeripheralManager) {}
+    func didUnsubscribe(central _: CBCentral) {}
+
     func didStartAdvertising(_ error: (any Error)?) {
         if let error = error {
             logger.error("Failed to start advertising: \(error.localizedDescription)")

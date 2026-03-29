@@ -79,6 +79,8 @@ public class DanaKitPumpManager: PumpManagerProtocol {
 
     private let logger = PumpManagerLogger(subsystem: "com.bastiaanv.danaKit", category: "DanaKitBluetoothManager")
     let state: DanaKitState
+    var isRunning: Bool = false
+
     private let bluetooth: DanaKitBluetoothManager
     public required init(rawValue: StateRawValue, bluetoothManager: PumpBluetoothmanager) {
         state = DanaKitState(rawValue: rawValue)
@@ -89,10 +91,16 @@ public class DanaKitPumpManager: PumpManagerProtocol {
 
     public func startAdvertising() {
         bluetooth.startAdvertising()
+        isRunning = true
     }
 
     public func stop() {
         bluetooth.stopAdvertising()
+
+        if let bolusTimer = DanaKitMessages.bolusTimer {
+            bolusTimer.invalidate()
+            DanaKitMessages.bolusTimer = nil
+        }
 
         logger.info("DanaKit simulator has been stopped!")
     }

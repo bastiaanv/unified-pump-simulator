@@ -1,26 +1,42 @@
 import Foundation
 
 extension MedtrumKitPackets {
+    static var synchronizeTimer: Timer?
+
     static func parseSynchronizePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
         bluetoothManager.writeResponse(
-            data: generateSynchronizePacket(state: params.pumpManager.state),
+            data: generateSynchronizePacket(state: params.pumpManager.state, longVersion: true),
             status: .ok,
             params.responseParam
         )
         logger.info("Processed Synchronized message!")
     }
 
-    static func sendUpdatePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
-        bluetoothManager.writeResponse(
-            data: generateSynchronizePacket(state: params.pumpManager.state),
-            status: .stateUpdate,
-            params.updateParam
-        )
+    static func scheduleUpdates(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        if let synchronizeTimer {
+            synchronizeTimer.invalidate()
+            Self.synchronizeTimer = nil
+        }
 
-        logger.info("State update send!")
+        DispatchQueue.main.async {
+            synchronizeTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
+                bluetoothManager.writeResponse(
+                    data: generateSynchronizePacket(state: params.pumpManager.state),
+                    status: .stateUpdate,
+                    params.updateParam
+                )
+
+                logger.info("State update send!")
+            }
+        }
     }
 
-    static func generateSynchronizePacket(state: MedtrumKitState) -> Data {
+    static func unscheduleUpdates() {
+        synchronizeTimer?.invalidate()
+        synchronizeTimer = nil
+    }
+
+    static func generateSynchronizePacket(state: MedtrumKitState, longVersion: Bool = false) -> Data {
         var fieldFlags: UInt16 = 0
         var data = Data([])
 
@@ -50,9 +66,8 @@ extension MedtrumKitPackets {
                 BasalType.NONE.rawValue,
                 0x00,
                 0x00, // Sequence
-                0x00,
-                0x00, // PatchId
             ])
+            basalData.append(UInt16(state.patchId).toData())
 
             let currentBaseBasalRate = UInt64(state.currentBaseBasalRate / 0.05)
 
@@ -82,16 +97,20 @@ extension MedtrumKitPackets {
             data.append(UInt16(state.reservoirLevel / 0.05).toData())
         }
 
-        if state.patchState == .active, let activatedAt = state.activatedAt {
+        if state.patchState == .active, let activatedAt = state.activatedAt, longVersion {
             fieldFlags |= Self.MASK_START_TIME
             data.append(activatedAt.toMedtrumSeconds())
         }
 
-        if state.patchState == .active {
+        if state.patchState == .active, longVersion {
             fieldFlags |= Self.MASK_BATTERY
 
             let value = UInt64(state.voltageA * 512) + UInt64(state.voltageB * 512) << 12
             data.append(value.toData(length: 3))
+
+            fieldFlags |= Self.MASK_STORAGE
+            data.append(state.patchSequence.toData())
+            data.append(UInt16(state.patchId).toData())
         }
 
         if state.patchState == .hourlyMaxSuspended || state.patchState == .dailyMaxSuspended {
@@ -128,7 +147,7 @@ extension MedtrumKitPackets {
     private static let MASK_RESERVOIR: UInt16 = 0x20
     private static let MASK_START_TIME: UInt16 = 0x40
     private static let MASK_BATTERY: UInt16 = 0x80
-    private static let MASK_UNUSED_STORAGE: UInt16 = 0x100
+    private static let MASK_STORAGE: UInt16 = 0x100
     private static let MASK_ALARM: UInt16 = 0x200
     private static let MASK_UNUSED_AGE: UInt16 = 0x400
     private static let MASK_UNUSED_MAGNETO_PLACE: UInt16 = 0x800

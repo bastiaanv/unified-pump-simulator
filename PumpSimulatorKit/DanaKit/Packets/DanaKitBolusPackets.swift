@@ -1,7 +1,7 @@
 import Foundation
 
 extension DanaKitMessages {
-    private static var bolusTimer: Timer?
+    static var bolusTimer: Timer?
 
     static func processStartBolus(_ model: DanaKitProcessMessage) {
         var status: UInt8 = 0x00

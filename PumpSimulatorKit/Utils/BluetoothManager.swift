@@ -3,6 +3,9 @@ import CoreBluetooth
 protocol BluetoothManagerDelegate {
     func didStartAdvertising(_ error: (any Error)?)
     func didReceiveWrite(_ peripheral: CBPeripheralManager, characteristic: CBCharacteristic, data: Data, request: CBATTRequest)
+    func didReceiveSubscribe(central: CBCentral, peripheralManager: CBPeripheralManager)
+    func didUnsubscribe(central: CBCentral)
+    func readyForNextMessage(_ peripheral: CBPeripheralManager)
 }
 
 public class PumpBluetoothmanager: NSObject {
@@ -56,8 +59,22 @@ extension PumpBluetoothmanager: CBPeripheralManagerDelegate {
         }
     }
 
-    public func peripheralManager(_: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
+    public func peripheralManager(
+        _ peripheralManager: CBPeripheralManager,
+        central: CBCentral,
+        didSubscribeTo characteristic: CBCharacteristic
+    ) {
         logger.debug("Received subscription from \(central) on \(characteristic.uuid.uuidString)")
+        bluetoothManagerDelegate?.didReceiveSubscribe(central: central, peripheralManager: peripheralManager)
+    }
+
+    public func peripheralManager(
+        _: CBPeripheralManager,
+        central: CBCentral,
+        didUnsubscribeFrom characteristic: CBCharacteristic
+    ) {
+        logger.debug("Received unsubscription from \(central) on \(characteristic.uuid.uuidString)")
+        bluetoothManagerDelegate?.didUnsubscribe(central: central)
     }
 
     public func peripheralManagerDidStartAdvertising(_: CBPeripheralManager, error: (any Error)?) {
@@ -74,5 +91,9 @@ extension PumpBluetoothmanager: CBPeripheralManagerDelegate {
 
             bluetoothManagerDelegate?.didReceiveWrite(peripheral, characteristic: item.characteristic, data: value, request: item)
         }
+    }
+
+    public func peripheralManagerIsReady(toUpdateSubscribers peripheralManager: CBPeripheralManager) {
+        bluetoothManagerDelegate?.readyForNextMessage(peripheralManager)
     }
 }

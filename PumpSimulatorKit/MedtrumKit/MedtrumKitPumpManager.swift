@@ -59,9 +59,18 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
     }
 
     public var basalState: BasalState {
-        // TODO: temp basal
         if state.patchState == .suspended, let suspendedSince = state.suspendedSince {
             return .suspended(start: suspendedSince)
+
+        } else if let percentage = state.tempBasalPercentage,
+                  let start = state.tempBasalStart,
+                  let duration = state.tempBasalDuration
+        {
+            return .tempBasal(
+                rate: state.currentBaseBasalRate * (Double(percentage) / 100),
+                start: start,
+                end: start + duration
+            )
 
         } else {
             return .active(rate: state.currentBaseBasalRate)
