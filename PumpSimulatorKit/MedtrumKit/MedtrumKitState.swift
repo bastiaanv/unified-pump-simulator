@@ -115,7 +115,7 @@ class MedtrumKitState {
         let nowTimeInterval = now.timeIntervalSince(startOfDay)
 
         let index = (basal.firstIndex(where: { $0.start > nowTimeInterval }) ?? 24) - 1
-        return basal.indices.contains(index) ? basal[index].rate : 0
+        return basal.indices.contains(index) ? basal[index].rate : basal[0].rate
     }
 }
 

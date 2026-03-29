@@ -31,7 +31,7 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
     }
 
     public var pumpNotes: String {
-        "Pump base serial number: 4A12D828"
+        "Pump base serial number: \(currentModel.index == 0 ? "4A12D828" : "<NO_SERIAL_KNOWN>")"
     }
 
     public var expiresAt: Date? {

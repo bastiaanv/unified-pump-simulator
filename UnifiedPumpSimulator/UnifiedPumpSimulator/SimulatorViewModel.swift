@@ -33,6 +33,14 @@ class SimulatorViewModel: ObservableObject {
         return formatter
     }()
 
+    let basalFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .decimal
+        formatter.maximumFractionDigits = 2
+        formatter.minimumFractionDigits = 2
+        return formatter
+    }()
+
     let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.timeStyle = .medium
@@ -93,10 +101,10 @@ extension SimulatorViewModel: StorageDelegate {
                 self.basalState = "Suspended - since: \(self.timeFormatter.string(from: start))"
             case let .tempBasal(rate, _, _):
                 self.basalIcon = "bolt.fill"
-                self.basalState = "Temp basal - rate: \(rate) U/hr"
+                self.basalState = "Temp basal - rate: \(self.basalFormatter.string(from: rate as NSNumber) ?? "0") U/hr"
             case let .active(rate):
                 self.basalIcon = "play.fill"
-                self.basalState = "Active - rate: \(rate) U/hr"
+                self.basalState = "Active - rate: \(self.basalFormatter.string(from: rate as NSNumber) ?? "0") U/hr"
             @unknown default:
                 break
             }

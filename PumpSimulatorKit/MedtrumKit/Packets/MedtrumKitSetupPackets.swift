@@ -1,6 +1,8 @@
 import Foundation
 
 extension MedtrumKitPackets {
+    static var primeTimer: Timer?
+
     static func parsePrimePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
         guard params.pumpManager.state.patchState.rawValue >= PatchState.filled.rawValue else {
             bluetoothManager.writeResponse(
@@ -27,7 +29,7 @@ extension MedtrumKitPackets {
             params.responseParam
         )
 
-        triggerPrimeUpdate(params, bluetoothManager)
+        schedulePrimeUpdate(params, bluetoothManager)
     }
 
     static func parseActivatePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
@@ -108,42 +110,42 @@ extension MedtrumKitPackets {
         logger.info("Processed Deactivate message!")
     }
 
-    private static func triggerPrimeUpdate(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
-        guard params.pumpManager.isRunning else {
-            // Kill Async task
-            return
-        }
-
-        if let primeProgress = params.pumpManager.state.primeProgress {
-            params.pumpManager.state.primeProgress = primeProgress + 2
-
-            if primeProgress > 100 {
-                params.pumpManager.state.patchState = .ejected
-                params.pumpManager.state.primeProgress = nil
-
-                logger.info("Priming completed!")
-            } else {
-                logger.info("Updated priming progress...")
-
-                DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now().advanced(by: .milliseconds(500))) {
-                    triggerPrimeUpdate(params, bluetoothManager)
-                }
-            }
-        } else {
-            params.pumpManager.state.primeProgress = 1
-            logger.info("Updated priming progress...")
-
-            DispatchQueue.global(qos: .userInitiated).asyncAfter(deadline: .now().advanced(by: .milliseconds(500))) {
-                triggerPrimeUpdate(params, bluetoothManager)
-            }
-        }
-
-        params.pumpManager.notifyStateDidUpdate()
-
+    static func parseClearAlertPacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
         bluetoothManager.writeResponse(
-            data: MedtrumKitPackets.generateSynchronizePacket(state: params.pumpManager.state),
-            status: .stateUpdate,
-            params.updateParam
+            data: Data(),
+            status: .ok,
+            params.responseParam
         )
+        logger.info("Processed Clear alert message!")
+    }
+
+    private static func schedulePrimeUpdate(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        DispatchQueue.main.async {
+            primeTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+                if let primeProgress = params.pumpManager.state.primeProgress {
+                    params.pumpManager.state.primeProgress = primeProgress + 4
+
+                    if primeProgress > 100 {
+                        params.pumpManager.state.patchState = .ejected
+                        params.pumpManager.state.primeProgress = nil
+
+                        logger.info("Priming completed!")
+
+                        primeTimer?.invalidate()
+                        primeTimer = nil
+                    }
+                } else {
+                    params.pumpManager.state.primeProgress = 1
+                }
+
+                params.pumpManager.notifyStateDidUpdate()
+
+                bluetoothManager.writeResponse(
+                    data: MedtrumKitPackets.generateSynchronizePacket(state: params.pumpManager.state),
+                    status: .stateUpdate,
+                    params.updateParam
+                )
+            }
+        }
     }
 }

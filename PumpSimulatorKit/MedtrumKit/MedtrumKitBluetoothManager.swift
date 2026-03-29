@@ -142,6 +142,14 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
             MedtrumKitPackets.parseTempBasalPacket(param, self)
         case CommandType.CANCEL_TEMP_BASAL:
             MedtrumKitPackets.parseStopTempBasalPacket(param, self)
+        case CommandType.CLEAR_ALARM:
+            MedtrumKitPackets.parseClearAlertPacket(param, self)
+        case CommandType.SET_BASAL_PROFILE:
+            MedtrumKitPackets.parseBasalSchedulePacket(param, self)
+        case CommandType.SET_BOLUS:
+            MedtrumKitPackets.startBolus(param, self)
+        case CommandType.CANCEL_BOLUS:
+            MedtrumKitPackets.stopBolus(param, self)
         default:
             logger.warning("Received unknown command: \(buffer[1])")
         }
