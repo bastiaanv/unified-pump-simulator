@@ -88,6 +88,9 @@ class DanaKitState {
     var reservoirLevel: Double
     var batteryPercentage: UInt8
 
+    var bolusProgress: Double?
+    var bolusTotal: Double?
+
     var historyUploadMode: Bool
 
     // User options

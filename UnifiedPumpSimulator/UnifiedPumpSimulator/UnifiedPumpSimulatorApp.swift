@@ -12,11 +12,22 @@ struct Managers: Identifiable {
     private let managers: [Managers]
     init() {
         let storage = Storage()
+        let bluetooth = PumpBluetoothmanager()
+
         managers = [
-            Managers(icon: "1.circle", manager: DanaKitPumpManager(rawValue: storage.getState(DanaKitPumpManager.self) ?? [:])),
+            Managers(
+                icon: "1.circle",
+                manager: DanaKitPumpManager(
+                    rawValue: storage.getState(DanaKitPumpManager.self) ?? [:],
+                    bluetoothManager: bluetooth
+                )
+            ),
             Managers(
                 icon: "2.circle",
-                manager: MedtrumKitPumpManager(rawValue: storage.getState(MedtrumKitPumpManager.self) ?? [:])
+                manager: MedtrumKitPumpManager(
+                    rawValue: storage.getState(MedtrumKitPumpManager.self) ?? [:],
+                    bluetoothManager: bluetooth
+                )
             ),
         ]
     }

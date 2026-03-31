@@ -8,7 +8,6 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
     public let capabilities = PumpManagerCapabitilties(
         supportedModels: [
             PumpModel(name: "200U", image: Image(imageName: "nano200"), index: 0),
-            PumpModel(name: "300U", image: Image(imageName: "nano300"), index: 1),
         ],
         canExpire: true
     )
@@ -26,8 +25,12 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         }
     }
 
+    public var pumpState: String {
+        state.patchState.title
+    }
+
     public var pumpNotes: String {
-        "Pump base serial number: 4A12D828"
+        "Pump base serial number: \(currentModel.index == 0 ? "4A12D828" : "<NO_SERIAL_KNOWN>")"
     }
 
     public var expiresAt: Date? {
@@ -46,8 +49,8 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         }
     }
 
-    public var batteryLevel: Double? {
-        nil
+    public var batteryLevel: String? {
+        "\(state.voltageB)V"
     }
 
     public var reservoirLevel: Double {
@@ -55,8 +58,30 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
     }
 
     public var basalState: BasalState {
-        // TODO:
-        .suspended(start: Date.now)
+        if state.patchState == .suspended, let suspendedSince = state.suspendedSince {
+            return .suspended(start: suspendedSince)
+
+        } else if let percentage = state.tempBasalPercentage,
+                  let start = state.tempBasalStart,
+                  let duration = state.tempBasalDuration
+        {
+            return .tempBasal(
+                rate: state.currentBaseBasalRate * (Double(percentage) / 100),
+                start: start,
+                end: start + duration
+            )
+
+        } else {
+            return .active(rate: state.currentBaseBasalRate)
+        }
+    }
+
+    public var bolusProgress: BolusState? {
+        guard let progress = state.bolusProgress, let total = state.bolusTotal else {
+            return nil
+        }
+
+        return BolusState(total: total, progress: progress)
     }
 
     public var storageDelegate: (any StorageDelegate)?
@@ -64,17 +89,34 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         state.getRaw()
     }
 
-    private let state: MedtrumKitState
-    public required init(rawValue: StateRawValue) {
+    private let logger = PumpManagerLogger(subsystem: "com.bastiaanv.medtrumkit", category: "MedtrumKitPumpManager")
+    private let bluetooth: MedtrumKitBluetoothManager
+    let state: MedtrumKitState
+    var isRunning: Bool = false
+
+    public required init(rawValue: StateRawValue, bluetoothManager: PumpBluetoothmanager) {
         state = MedtrumKitState(rawValue: rawValue)
+        bluetooth = MedtrumKitBluetoothManager(pumpBluetoothManager: bluetoothManager)
+
+        bluetooth.pumpManagerDelegate = self
     }
 
     public func startAdvertising() {
-        // TODO:
+        if state.activatedAt == nil {
+            state.activatedAt = Date.now
+            state.patchState = .filled
+            notifyStateDidUpdate()
+        }
+
+        bluetooth.startAdvertising()
+        isRunning = true
     }
 
     public func stop() {
-        // TODO: Stop adverting & kill bluetooth manager
+        bluetooth.stopAdvertising()
+        isRunning = false
+
+        logger.info("MedtrumKit simulator has been stopped!")
     }
 
     func notifyStateDidUpdate() {

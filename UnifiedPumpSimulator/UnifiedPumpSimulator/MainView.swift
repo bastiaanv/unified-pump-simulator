@@ -16,10 +16,3 @@ struct MainView: View {
         .tabViewStyle(.sidebarAdaptable)
     }
 }
-
-#Preview {
-    MainView(pumpManagers: [
-        Managers(icon: "1.circle", manager: DanaKitPumpManager(rawValue: [:])),
-        Managers(icon: "2.circle", manager: MedtrumKitPumpManager(rawValue: [:])),
-    ])
-}

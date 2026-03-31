@@ -70,6 +70,21 @@ struct SimulatorView: View {
                 .font(.title3)
                 .bold()
 
+            if !viewModel.pumpState.isEmpty {
+                HStack(spacing: 5) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.callout)
+                        .foregroundStyle(.blue)
+
+                    Text("Pump state:")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    Text(viewModel.pumpState)
+                        .foregroundStyle(.primary)
+                }
+            }
+
             HStack(spacing: 5) {
                 Image(systemName: "cross.vial.fill")
                     .font(.callout)
@@ -108,6 +123,21 @@ struct SimulatorView: View {
 
                     Text(viewModel.batteryLevel)
                         .foregroundStyle(.primary)
+                }
+            }
+
+            if let bolusProgress = viewModel.bolusProgress {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Bolus progress")
+                        .font(.title3)
+                        .bold()
+                        .padding(.top, 10)
+
+                    ProgressView(value: bolusProgress.progress, total: bolusProgress.total)
+                        .frame(width: 200)
+                    Text(
+                        "\(viewModel.basalFormatter.string(from: bolusProgress.progress as NSNumber) ?? "") U of \(viewModel.basalFormatter.string(from: bolusProgress.total as NSNumber) ?? "") U"
+                    )
                 }
             }
 
@@ -169,11 +199,4 @@ struct BlueButtonStyle: ButtonStyle {
             .background(configuration.isPressed ? Color.white : primaryColor)
             .cornerRadius(6.0)
     }
-}
-
-#Preview {
-    MainView(pumpManagers: [
-        Managers(icon: "1.circle", manager: DanaKitPumpManager(rawValue: [:])),
-        Managers(icon: "2.circle", manager: MedtrumKitPumpManager(rawValue: [:])),
-    ])
 }

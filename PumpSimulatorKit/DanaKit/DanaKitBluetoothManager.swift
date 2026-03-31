@@ -2,13 +2,10 @@ import CoreBluetooth
 import Foundation
 import OSLog
 
-class DanaKitBluetoothManager: NSObject {
+class DanaKitBluetoothManager {
     var pumpManagerDelegate: DanaKitPumpManager?
     private let logger = PumpManagerLogger(subsystem: "com.bastiaanv.danaKit", category: "DanaKitBluetoothManager")
-
-    private var manager: CBCentralManager?
-    private var peripheralManager: CBPeripheralManager?
-    private let managerQueue = DispatchQueue(label: "com.DanaKit.bluetoothManagerQueue", qos: .unspecified)
+    private let pumpBluetoothManager: PumpBluetoothmanager
 
     let LOCAL_DEVICE_NAME = "VJX00016FI" // "XXX00000XX"
     private let SERVICE_UUID = CBUUID(string: "FFF0")
@@ -17,7 +14,7 @@ class DanaKitBluetoothManager: NSObject {
     private let WRITE_CHAR_UUID = CBUUID(string: "FFF2")
     private let WRITE_CHARACTERISTIC: CBMutableCharacteristic
 
-    override init() {
+    init(pumpBluetoothManager: PumpBluetoothmanager) {
         WRITE_CHARACTERISTIC = CBMutableCharacteristic(
             type: WRITE_CHAR_UUID,
             properties: [.writeWithoutResponse],
@@ -31,127 +28,88 @@ class DanaKitBluetoothManager: NSObject {
             value: nil,
             permissions: .readable
         )
-        super.init()
 
-        managerQueue.sync {
-            self.manager = CBCentralManager(delegate: self, queue: managerQueue)
-            self.peripheralManager = CBPeripheralManager(delegate: self, queue: managerQueue)
-        }
+        self.pumpBluetoothManager = pumpBluetoothManager
     }
 
     func startAdvertising() {
-        guard let peripheralManager = peripheralManager else {
-            logger.error("No CBPeripheralManager available...")
-            return
-        }
+        pumpBluetoothManager.bluetoothManagerDelegate = self
 
-        guard peripheralManager.state == .poweredOn else {
-            logger.error("CBPeripheralManager is in an invalid state - state: \(peripheralManager.state.rawValue)")
-            return
-        }
+        let service = CBMutableService(type: SERVICE_UUID, primary: true)
+        service.characteristics = [SUBSCRIPTION_CHARACTERISTIC, WRITE_CHARACTERISTIC]
 
         let advertisingData: [String: Any] = [
             CBAdvertisementDataLocalNameKey: LOCAL_DEVICE_NAME,
             CBAdvertisementDataServiceUUIDsKey: [SERVICE_UUID],
         ]
 
-        peripheralManager.startAdvertising(advertisingData)
+        pumpBluetoothManager.startAdvertising(services: [service], advertisingData: advertisingData)
     }
 
     func stopAdvertising() {
-        guard let peripheralManager = peripheralManager, peripheralManager.isAdvertising else {
-            return
-        }
-
-        peripheralManager.stopAdvertising()
+        pumpBluetoothManager.stopAdvertising()
     }
 }
 
-extension DanaKitBluetoothManager: CBCentralManagerDelegate {
-    func centralManagerDidUpdateState(_ central: CBCentralManager) {
-        logger.info("centralManagerDidUpdateState: \(central.state.rawValue)")
-    }
-}
+extension DanaKitBluetoothManager: BluetoothManagerDelegate {
+    func readyForNextMessage(_: CBPeripheralManager) {}
+    func didReceiveSubscribe(central _: CBCentral, peripheralManager _: CBPeripheralManager) {}
+    func didUnsubscribe(central _: CBCentral) {}
 
-extension DanaKitBluetoothManager: CBPeripheralManagerDelegate {
-    func peripheralManagerDidStartAdvertising(_: CBPeripheralManager, error: (any Error)?) {
+    func didStartAdvertising(_ error: (any Error)?) {
         if let error = error {
             logger.error("Failed to start advertising: \(error.localizedDescription)")
             return
         }
 
-        logger.info("Simulator has started!")
+        logger.info("Dana simulator has started!")
     }
 
-    func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
-        logger.info("peripheralManagerDidUpdateState: \(peripheral.state.rawValue)")
-        guard peripheral.state == .poweredOn else {
+    func didReceiveWrite(
+        _ peripheral: CBPeripheralManager,
+        characteristic: CBCharacteristic,
+        data: Data,
+        request _: CBATTRequest
+    ) {
+        guard characteristic.uuid == WRITE_CHAR_UUID else {
+            let message = "Received write on wrong characteristic - UUID: \(characteristic.uuid.uuidString), Service uuid: \(characteristic.service?.uuid.uuidString ?? "nil")"
+            logger.error(message)
             return
         }
 
-        peripheral.removeAllServices()
-
-        let service = CBMutableService(type: SERVICE_UUID, primary: true)
-        service.characteristics = [SUBSCRIPTION_CHARACTERISTIC, WRITE_CHARACTERISTIC]
-        peripheral.add(service)
-    }
-
-    func peripheralManager(_: CBPeripheralManager, didAdd _: CBService, error: (any Error)?) {
-        if let error = error {
-            logger.error("Got error during didAdd service - error: \(error.localizedDescription)")
+        guard let pumpManager = pumpManagerDelegate else {
+            logger.error("No pumpManagerDelegate")
+            return
         }
-    }
 
-    func peripheralManager(_: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
-        logger.debug("Received subscription from \(central) on \(characteristic.uuid.uuidString)")
-    }
+        var value = data
 
-    func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
-        for item in requests {
-            guard item.characteristic.uuid == WRITE_CHAR_UUID else {
-                let message = "Received write on wrong characteristic - UUID: \(item.characteristic.uuid.uuidString), Service uuid: \(item.characteristic.service?.uuid.uuidString ?? "nil")"
-                logger.error(message)
-                return
-            }
+        let isEncryptionCommand = value[0] == 0xA5
+        if value[0] != 0xA5 {
+            value = DanaKitEncryption.decrypt(data: data, state: pumpManager.state)
+            logger.debug("Second decryption: \(data.hexString())")
+        }
 
-            guard let pumpManager = pumpManagerDelegate else {
-                logger.error("No pumpManagerDelegate")
-                return
-            }
+        value = DanaKitEncryption.xorPacketSerialNumber(data: value, deviceName: LOCAL_DEVICE_NAME)
+        logger.debug("Received message: \(value.hexString())")
 
-            guard var value = item.value else {
-                let message = "EMPTY data received - UUID: \(item.characteristic.uuid.uuidString), Service uuid: \(item.characteristic.service?.uuid.uuidString ?? "nil")"
-                logger.warning(message)
-                return
-            }
+        let expectedCrc = DanaKitEncryption.generateCrc(
+            buffer: value.subdata(in: 3 ..< value.count - 4),
+            enhancedEncryption: pumpManager.state.pumpModel,
+            isEncryptionCommand: isEncryptionCommand
+        )
 
-            let isEncryptionCommand = value[0] == 0xA5
-            if value[0] != 0xA5 {
-                value = DanaKitEncryption.decrypt(data: value, state: pumpManager.state)
-                logger.debug("Second decryption: \(value.hexString())")
-            }
+        let actualCrc = UInt16(value[value.count - 4]) << 8 + UInt16(value[value.count - 3])
+        guard expectedCrc == actualCrc else {
+            logger.error("Crc check failed - actualCrc: \(actualCrc), expectedCrc: \(expectedCrc)")
+            return
+        }
 
-            value = DanaKitEncryption.xorPacketSerialNumber(data: value, deviceName: LOCAL_DEVICE_NAME)
-            logger.debug("Received message: \(value.hexString())")
-
-            let expectedCrc = DanaKitEncryption.generateCrc(
-                buffer: value.subdata(in: 3 ..< value.count - 4),
-                enhancedEncryption: pumpManager.state.pumpModel,
-                isEncryptionCommand: isEncryptionCommand
-            )
-
-            let actualCrc = UInt16(value[value.count - 4]) << 8 + UInt16(value[value.count - 3])
-            guard expectedCrc == actualCrc else {
-                logger.error("Crc check failed - actualCrc: \(actualCrc), expectedCrc: \(expectedCrc)")
-                return
-            }
-
-            let data = value.subdata(in: 3 ..< value.count - 2)
-            if isEncryptionCommand {
-                processAuthMessage(peripheral, pumpManager, data)
-            } else {
-                processMessage(peripheral, pumpManager, data)
-            }
+        let data = value.subdata(in: 3 ..< value.count - 2)
+        if isEncryptionCommand {
+            processAuthMessage(peripheral, pumpManager, data)
+        } else {
+            processMessage(peripheral, pumpManager, data)
         }
     }
 }
