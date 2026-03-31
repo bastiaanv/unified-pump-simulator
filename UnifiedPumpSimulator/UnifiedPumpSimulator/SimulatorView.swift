@@ -126,6 +126,21 @@ struct SimulatorView: View {
                 }
             }
 
+            if let bolusProgress = viewModel.bolusProgress {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("Bolus progress")
+                        .font(.title3)
+                        .bold()
+                        .padding(.top, 10)
+
+                    ProgressView(value: bolusProgress.progress, total: bolusProgress.total)
+                        .frame(width: 200)
+                    Text(
+                        "\(viewModel.basalFormatter.string(from: bolusProgress.progress as NSNumber) ?? "") U of \(viewModel.basalFormatter.string(from: bolusProgress.total as NSNumber) ?? "") U"
+                    )
+                }
+            }
+
             Spacer()
             Text("Pump Notes")
                 .font(.title3)

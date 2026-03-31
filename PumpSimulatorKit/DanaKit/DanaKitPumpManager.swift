@@ -63,6 +63,14 @@ public class DanaKitPumpManager: PumpManagerProtocol {
         }
     }
 
+    public var bolusProgress: BolusState? {
+        guard let progress = state.bolusProgress, let total = state.bolusTotal else {
+            return nil
+        }
+
+        return BolusState(total: total, progress: progress)
+    }
+
     public var batteryLevel: String? {
         integerFormatter.string(from: state.batteryPercentage as NSNumber)
     }

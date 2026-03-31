@@ -31,6 +31,8 @@ public protocol PumpManagerProtocol {
     var pumpNotes: String { get }
     var pumpState: String { get }
 
+    var bolusProgress: BolusState? { get }
+
     init(rawValue: StateRawValue, bluetoothManager: PumpBluetoothmanager)
 
     /// Start advertising bluetooth device
@@ -66,4 +68,9 @@ public enum BasalState {
     case suspended(start: Date)
     case active(rate: Double)
     case tempBasal(rate: Double, start: Date, end: Date)
+}
+
+public struct BolusState {
+    public var total: Double
+    public var progress: Double
 }

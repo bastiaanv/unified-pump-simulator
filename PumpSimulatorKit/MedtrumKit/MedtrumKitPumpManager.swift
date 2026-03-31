@@ -8,7 +8,6 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
     public let capabilities = PumpManagerCapabitilties(
         supportedModels: [
             PumpModel(name: "200U", image: Image(imageName: "nano200"), index: 0),
-            PumpModel(name: "300U", image: Image(imageName: "nano300"), index: 1),
         ],
         canExpire: true
     )
@@ -75,6 +74,14 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         } else {
             return .active(rate: state.currentBaseBasalRate)
         }
+    }
+
+    public var bolusProgress: BolusState? {
+        guard let progress = state.bolusProgress, let total = state.bolusTotal else {
+            return nil
+        }
+
+        return BolusState(total: total, progress: progress)
     }
 
     public var storageDelegate: (any StorageDelegate)?

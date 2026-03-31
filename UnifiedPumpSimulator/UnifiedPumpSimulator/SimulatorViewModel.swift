@@ -25,6 +25,7 @@ class SimulatorViewModel: ObservableObject {
     @Published var batteryLevel: String = ""
     @Published var pumpNotes: String = ""
     @Published var pumpState: String = ""
+    @Published var bolusProgress: BolusState? = nil
 
     let integerFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
@@ -88,6 +89,7 @@ extension SimulatorViewModel: StorageDelegate {
             self.pumpNotes = self.pumpManager.pumpNotes
             self.pumpState = self.pumpManager.pumpState
             self.reservoirLevel = self.integerFormatter.string(from: pumpManager.reservoirLevel as NSNumber) ?? "0"
+            self.bolusProgress = self.pumpManager.bolusProgress
 
             if let battery = pumpManager.batteryLevel {
                 self.batteryLevel = battery
