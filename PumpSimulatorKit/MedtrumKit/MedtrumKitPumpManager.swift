@@ -8,17 +8,14 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
     public let capabilities = PumpManagerCapabitilties(
         supportedModels: [
             PumpModel(name: "200U", image: Image(imageName: "nano200"), index: 0),
+            PumpModel(name: "300U", image: Image(imageName: "nano300"), index: 1),
         ],
         canExpire: true
     )
 
     public var currentModel: PumpModel {
         get {
-            capabilities.supportedModels.first(where: { $0.index == state.currentModelIndex }) ?? PumpModel(
-                name: "200U",
-                image: Image(imageName: "nano200"),
-                index: 0
-            )
+            capabilities.supportedModels.first(where: { $0.index == state.currentModelIndex }) ?? capabilities.supportedModels[0]
         }
         set {
             state.currentModelIndex = newValue.index
@@ -30,7 +27,7 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
     }
 
     public var pumpNotes: String {
-        "Pump base serial number: \(currentModel.index == 0 ? "4A12D828" : "<NO_SERIAL_KNOWN>")"
+        "Pump base serial number: \(currentModel.index == 0 ? "4A12D828" : "52DF1614")"
     }
 
     public var expiresAt: Date? {
