@@ -27,6 +27,16 @@ extension MedtrumKitPackets {
     }
 
     static func parseSuspendPacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        guard params.pumpManager.state.patchState == .active else {
+            logger.warning("Attempted suspend during non-active state...")
+            bluetoothManager.writeResponse(
+                data: Data(),
+                status: .invalidState,
+                params.responseParam
+            )
+            return
+        }
+
         params.pumpManager.state.patchState = .suspended
         params.pumpManager.state.suspendedSince = Date.now
         params.pumpManager.state.suspendedDuration = TimeInterval(minutes: Double(params.data[5]))
@@ -46,6 +56,16 @@ extension MedtrumKitPackets {
     }
 
     static func parseResumePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        guard params.pumpManager.state.patchState == .suspended else {
+            logger.warning("Attempted resume during non-suspend state...")
+            bluetoothManager.writeResponse(
+                data: Data(),
+                status: .invalidState,
+                params.responseParam
+            )
+            return
+        }
+        
         params.pumpManager.state.patchState = .active
         params.pumpManager.state.suspendedSince = nil
         params.pumpManager.state.tempBasalStart = nil

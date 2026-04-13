@@ -5,6 +5,16 @@ extension MedtrumKitPackets {
     private static let supportedBolusVolumes = (1 ... 600).map { Double($0) / 20 }
 
     static func startBolus(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        guard params.pumpManager.state.patchState == .active else {
+            logger.warning("Attempted startBolus during non-active state...")
+            bluetoothManager.writeResponse(
+                data: Data(),
+                status: .invalidState,
+                params.responseParam
+            )
+            return
+        }
+        
         let amount = Double(params.data.toUInt16(offset: 5)) * 0.05
 
         bluetoothManager.writeResponse(
