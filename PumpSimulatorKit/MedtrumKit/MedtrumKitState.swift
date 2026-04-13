@@ -86,6 +86,7 @@ class MedtrumKitState {
 
     var basalSince: Date
     var suspendedSince: Date?
+    var suspendedDuration: TimeInterval?
     var tempBasalPercentage: UInt16?
     var tempBasalStart: Date?
     var tempBasalDuration: TimeInterval?

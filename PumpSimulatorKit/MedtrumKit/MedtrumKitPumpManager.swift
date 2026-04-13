@@ -55,13 +55,34 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
     }
 
     public var basalState: BasalState {
-        if state.patchState == .suspended, let suspendedSince = state.suspendedSince {
-            return .suspended(start: suspendedSince)
+        if state.patchState == .suspended,
+           let suspendedSince = state.suspendedSince,
+           let suspendedDuration = state.suspendedDuration
+        {
+            if suspendedSince.addingTimeInterval(suspendedDuration) < Date.now {
+                state.suspendedSince = nil
+                state.suspendedDuration = nil
+                state.patchState = .active
+                notifyStateDidUpdate()
+
+                return .active(rate: state.currentBaseBasalRate)
+            }
+
+            return .suspended(start: suspendedSince, duration: suspendedDuration)
 
         } else if let percentage = state.tempBasalPercentage,
                   let start = state.tempBasalStart,
                   let duration = state.tempBasalDuration
         {
+            if start.addingTimeInterval(duration) < Date.now {
+                state.tempBasalPercentage = nil
+                state.tempBasalStart = nil
+                state.tempBasalDuration = nil
+                notifyStateDidUpdate()
+
+                return .active(rate: state.currentBaseBasalRate)
+            }
+
             return .tempBasal(
                 rate: state.currentBaseBasalRate * (Double(percentage) / 100),
                 start: start,

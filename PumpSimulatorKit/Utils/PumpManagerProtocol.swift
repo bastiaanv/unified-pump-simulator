@@ -65,7 +65,7 @@ public struct BasalItem: Identifiable, Codable {
 }
 
 public enum BasalState {
-    case suspended(start: Date)
+    case suspended(start: Date, duration: TimeInterval?)
     case active(rate: Double)
     case tempBasal(rate: Double, start: Date, end: Date)
 }

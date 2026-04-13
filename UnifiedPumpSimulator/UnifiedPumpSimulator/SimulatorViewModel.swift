@@ -98,9 +98,17 @@ extension SimulatorViewModel: StorageDelegate {
             }
 
             switch pumpManager.basalState {
-            case let .suspended(start):
+            case let .suspended(start, duration):
                 self.basalIcon = "pause.fill"
-                self.basalState = "Suspended - since: \(self.timeFormatter.string(from: start))"
+
+                if let duration {
+                    let timeLeft = start.addingTimeInterval(duration).timeIntervalSinceNow
+                    let formatted = Duration(secondsComponent: Int64(timeLeft), attosecondsComponent: 0)
+                        .formatted(.time(pattern: .hourMinute))
+                    self.basalState = "Suspended - for: \(formatted)"
+                } else {
+                    self.basalState = "Suspended - since: \(self.timeFormatter.string(from: start))"
+                }
             case let .tempBasal(rate, _, _):
                 self.basalIcon = "bolt.fill"
                 self.basalState = "Temp basal - rate: \(self.basalFormatter.string(from: rate as NSNumber) ?? "0") U/hr"

@@ -212,10 +212,7 @@ enum DanaKitEncryption {
             result ^= (result & 0xFF) >> 4
             result ^= (result << 12)
 
-            if enhancedEncryption == .DanaRSv1 {
-                let tmp = (result & 0xFF) << 3 | ((result & 0xFF) >> 2) << 5
-                result ^= tmp
-            } else if enhancedEncryption == .DanaRSv3 {
+            if enhancedEncryption == .DanaRSv3 {
                 var tmp: UInt16 = 0
                 if isEncryptionCommand {
                     tmp = (result & 0xFF) << 3 | ((result & 0xFF) >> 2) << 5

@@ -2,14 +2,11 @@ import Foundation
 import SwiftUI
 
 enum DanaPump: UInt8 {
-    case DanaRSv1 = 0
     case DanaRSv3 = 1
     case DanaI = 2
 
     func getPumpModel() -> PumpModel {
         switch self {
-        case .DanaRSv1:
-            return PumpModel(name: "DanaRS v1", image: Image(imageName: "danars"), index: 0)
         case .DanaRSv3:
             return PumpModel(name: "DanaRS v3", image: Image(imageName: "danars"), index: 1)
         case .DanaI:
@@ -19,8 +16,6 @@ enum DanaPump: UInt8 {
 
     func getHardwareModel() -> UInt8 {
         switch self {
-        case .DanaRSv1:
-            return 0
         case .DanaRSv3:
             return 5
         case .DanaI:
@@ -30,8 +25,6 @@ enum DanaPump: UInt8 {
 
     func getProtocol() -> UInt8 {
         switch self {
-        case .DanaRSv1:
-            return 0
         case .DanaRSv3:
             return 0
         case .DanaI:
@@ -41,8 +34,6 @@ enum DanaPump: UInt8 {
 
     func getBle5Keys() -> Data {
         switch self {
-        case .DanaRSv1:
-            return Data([])
         case .DanaRSv3:
             // Starting random sync key
             return Data([0xDE])

@@ -29,6 +29,7 @@ extension MedtrumKitPackets {
     static func parseSuspendPacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
         params.pumpManager.state.patchState = .suspended
         params.pumpManager.state.suspendedSince = Date.now
+        params.pumpManager.state.suspendedDuration = TimeInterval(minutes: Double(params.data[5]))
         params.pumpManager.state.tempBasalStart = nil
         params.pumpManager.state.tempBasalPercentage = nil
         params.pumpManager.state.tempBasalDuration = nil

@@ -37,17 +37,26 @@ public class DanaKitPumpManager: PumpManagerProtocol {
             return "Bluetooth name: \(bluetooth.LOCAL_DEVICE_NAME)"
         case .DanaRSv3:
             return "Bluetooth name: \(bluetooth.LOCAL_DEVICE_NAME)\nPin 1: \(DanaKitEncryption.pairingKeys.hexString())\nPin 2: \(DanaKitEncryption.randomPairingKeys.hexString())"
-        case .DanaRSv1:
-            return "Not implemented..."
         }
     }
 
     public var basalState: BasalState {
         if let suspendedSince = state.suspendedSince {
-            return .suspended(start: suspendedSince)
-        } else if let percentage = state.tempBasalPercentage, let duration = state.tempBasalDuration,
+            return .suspended(start: suspendedSince, duration: nil)
+
+        } else if let percentage = state.tempBasalPercentage,
+                  let duration = state.tempBasalDuration,
                   let start = state.tempBasalStart
         {
+            if start.addingTimeInterval(duration) < Date.now {
+                state.tempBasalPercentage = nil
+                state.tempBasalStart = nil
+                state.tempBasalDuration = nil
+                notifyStateUpdate()
+
+                return .active(rate: currentBaseBasalRate)
+            }
+
             let rate = Double(percentage) * currentBaseBasalRate
             return .tempBasal(rate: rate, start: start, end: start + duration)
         } else {
