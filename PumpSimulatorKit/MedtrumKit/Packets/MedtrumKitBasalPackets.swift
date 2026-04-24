@@ -65,7 +65,7 @@ extension MedtrumKitPackets {
             )
             return
         }
-        
+
         params.pumpManager.state.patchState = .active
         params.pumpManager.state.suspendedSince = nil
         params.pumpManager.state.tempBasalStart = nil
@@ -103,6 +103,16 @@ extension MedtrumKitPackets {
     }
 
     static func parseTempBasalPacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        guard params.pumpManager.state.patchState == .active else {
+            logger.warning("Rejecting temp basal during non-active state...")
+            bluetoothManager.writeResponse(
+                data: Data(),
+                status: .invalidState,
+                params.responseParam
+            )
+            return
+        }
+
         let currentRate = params.pumpManager.state.currentBaseBasalRate
         guard currentRate > 0 else {
             bluetoothManager.writeResponse(data: Data(), status: .invalidState, params.responseParam)

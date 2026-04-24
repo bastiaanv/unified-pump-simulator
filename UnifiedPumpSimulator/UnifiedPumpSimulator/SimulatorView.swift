@@ -133,7 +133,7 @@ struct SimulatorView: View {
                         .bold()
                         .padding(.top, 10)
 
-                    ProgressView(value: bolusProgress.progress, total: bolusProgress.total)
+                    ProgressView(value: min(bolusProgress.progress, bolusProgress.total), total: bolusProgress.total)
                         .frame(width: 200)
                     Text(
                         "\(viewModel.basalFormatter.string(from: bolusProgress.progress as NSNumber) ?? "") U of \(viewModel.basalFormatter.string(from: bolusProgress.total as NSNumber) ?? "") U"

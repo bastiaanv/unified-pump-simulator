@@ -33,17 +33,6 @@ extension MedtrumKitPackets {
     }
 
     static func parseActivatePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
-        guard params.pumpManager.state.patchState.rawValue < PatchState.active.rawValue else {
-            bluetoothManager.writeResponse(
-                data: Data(),
-                status: .invalidState,
-                params.responseParam
-            )
-
-            logger.warning("Rejecting activate command - Current state: \(params.pumpManager.state.patchState)")
-            return
-        }
-
         let basalEntries = Int(params.data[18])
         var basalSchedule: [BasalItem] = []
         for i in 0 ..< basalEntries {

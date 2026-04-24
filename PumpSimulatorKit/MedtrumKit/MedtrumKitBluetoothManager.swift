@@ -85,7 +85,6 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
 
         if buffer.isEmpty {
             buffer.append(data.subdata(in: 0 ..< data.count - 1))
-            logger.info("Curretn data: \(buffer.hexString())")
         } else {
             buffer.append(data[4 ..< data.count - 1])
         }

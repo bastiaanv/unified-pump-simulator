@@ -14,7 +14,7 @@ extension MedtrumKitPackets {
             )
             return
         }
-        
+
         let amount = Double(params.data.toUInt16(offset: 5)) * 0.05
 
         bluetoothManager.writeResponse(
