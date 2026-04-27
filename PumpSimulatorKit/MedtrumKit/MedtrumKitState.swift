@@ -68,7 +68,7 @@ class MedtrumKitState {
 
     var currentModelIndex: Int
 
-    var patchId: UInt32 = 0
+    var patchId: UInt32 = 192
     var patchSequence: UInt16 = 0
     var patchState: PatchState
 

@@ -201,7 +201,7 @@ struct SimulatorView: View {
 struct BlueButtonStyle: ButtonStyle {
     @Environment(\.isEnabled) var isEnabled
     let primaryColor: Color
-    var textColor: Color = Color.white
+    var textColor: Color = .white
 
     func makeBody(configuration: Self.Configuration) -> some View {
         configuration.label
