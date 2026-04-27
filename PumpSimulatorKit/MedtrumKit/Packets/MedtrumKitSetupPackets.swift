@@ -18,7 +18,7 @@ extension MedtrumKitPackets {
         params.pumpManager.state.patchState = .priming
         params.pumpManager.state.primeProgress = 1
         params.pumpManager.state.tempBasalStart = nil
-        params.pumpManager.state.tempBasalPercentage = nil
+        params.pumpManager.state.tempBasalRate = nil
         params.pumpManager.state.tempBasalDuration = nil
         params.pumpManager.state.suspendedSince = nil
         params.pumpManager.notifyStateDidUpdate()
@@ -83,7 +83,7 @@ extension MedtrumKitPackets {
         params.pumpManager.state.reservoirLevel = params.pumpManager.currentModel.index == 0 ? 200 : 300
         params.pumpManager.state.suspendedSince = nil
         params.pumpManager.state.tempBasalStart = nil
-        params.pumpManager.state.tempBasalPercentage = nil
+        params.pumpManager.state.tempBasalRate = nil
         params.pumpManager.state.tempBasalDuration = nil
         params.pumpManager.notifyStateDidUpdate()
 

@@ -70,12 +70,12 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
 
             return .suspended(start: suspendedSince, duration: suspendedDuration)
 
-        } else if let percentage = state.tempBasalPercentage,
+        } else if let rate = state.tempBasalRate,
                   let start = state.tempBasalStart,
                   let duration = state.tempBasalDuration
         {
             if start.addingTimeInterval(duration) < Date.now {
-                state.tempBasalPercentage = nil
+                state.tempBasalRate = nil
                 state.tempBasalStart = nil
                 state.tempBasalDuration = nil
                 notifyStateDidUpdate()
@@ -83,11 +83,7 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
                 return .active(rate: state.currentBaseBasalRate)
             }
 
-            return .tempBasal(
-                rate: state.currentBaseBasalRate * (Double(percentage) / 100),
-                start: start,
-                end: start + duration
-            )
+            return .tempBasal(rate: rate, start: start, end: start + duration)
 
         } else {
             return .active(rate: state.currentBaseBasalRate)
@@ -109,7 +105,7 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
 
     private let logger = PumpManagerLogger(subsystem: "com.bastiaanv.medtrumkit", category: "MedtrumKitPumpManager")
     private let bluetooth: MedtrumKitBluetoothManager
-    let state: MedtrumKitState
+    var state: MedtrumKitState
     var isRunning: Bool = false
 
     public required init(rawValue: StateRawValue, bluetoothManager: PumpBluetoothmanager) {
@@ -128,6 +124,11 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
 
         bluetooth.startAdvertising()
         isRunning = true
+    }
+
+    public func reset() {
+        state = MedtrumKitState(rawValue: [:])
+        notifyStateDidUpdate()
     }
 
     public func stop() {

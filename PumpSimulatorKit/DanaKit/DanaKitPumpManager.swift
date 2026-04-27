@@ -95,7 +95,7 @@ public class DanaKitPumpManager: PumpManagerProtocol {
     public var storageDelegate: (any StorageDelegate)?
 
     private let logger = PumpManagerLogger(subsystem: "com.bastiaanv.danaKit", category: "DanaKitBluetoothManager")
-    let state: DanaKitState
+    var state: DanaKitState
     var isRunning: Bool = false
 
     private let bluetooth: DanaKitBluetoothManager
@@ -109,6 +109,11 @@ public class DanaKitPumpManager: PumpManagerProtocol {
     public func startAdvertising() {
         bluetooth.startAdvertising()
         isRunning = true
+    }
+
+    public func reset() {
+        state = DanaKitState(rawValue: [:])
+        notifyStateUpdate()
     }
 
     public func stop() {

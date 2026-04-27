@@ -41,7 +41,7 @@ extension MedtrumKitPackets {
         params.pumpManager.state.suspendedSince = Date.now
         params.pumpManager.state.suspendedDuration = TimeInterval(minutes: Double(params.data[5]))
         params.pumpManager.state.tempBasalStart = nil
-        params.pumpManager.state.tempBasalPercentage = nil
+        params.pumpManager.state.tempBasalRate = nil
         params.pumpManager.state.tempBasalDuration = nil
         params.pumpManager.notifyStateDidUpdate()
 
@@ -69,7 +69,7 @@ extension MedtrumKitPackets {
         params.pumpManager.state.patchState = .active
         params.pumpManager.state.suspendedSince = nil
         params.pumpManager.state.tempBasalStart = nil
-        params.pumpManager.state.tempBasalPercentage = nil
+        params.pumpManager.state.tempBasalRate = nil
         params.pumpManager.state.tempBasalDuration = nil
         params.pumpManager.notifyStateDidUpdate()
 
@@ -87,7 +87,7 @@ extension MedtrumKitPackets {
         params.pumpManager.state.suspendedSince = nil
         params.pumpManager.state.tempBasalStart = nil
         params.pumpManager.state.tempBasalDuration = nil
-        params.pumpManager.state.tempBasalPercentage = nil
+        params.pumpManager.state.tempBasalRate = nil
         params.pumpManager.notifyStateDidUpdate()
 
         let rate = params.pumpManager.state.currentBaseBasalRate
@@ -127,7 +127,7 @@ extension MedtrumKitPackets {
         params.pumpManager.state.suspendedSince = nil
         params.pumpManager.state.tempBasalStart = Date.now
         params.pumpManager.state.tempBasalDuration = TimeInterval(minutes: Double(duration))
-        params.pumpManager.state.tempBasalPercentage = UInt16(rate / currentRate * 100)
+        params.pumpManager.state.tempBasalRate = rate
         params.pumpManager.notifyStateDidUpdate()
 
         var response = Data([BasalType.ABSOLUTE_TEMP.rawValue])

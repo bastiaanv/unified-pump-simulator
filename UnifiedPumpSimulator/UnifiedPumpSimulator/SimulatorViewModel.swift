@@ -73,6 +73,11 @@ class SimulatorViewModel: ObservableObject {
         pumpManager.stop()
         simulatorRunning = false
     }
+
+    func resetSimulator() {
+        pumpManager.reset()
+        simulatorRunning = false
+    }
 }
 
 extension SimulatorViewModel: StorageDelegate {

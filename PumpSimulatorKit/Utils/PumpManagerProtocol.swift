@@ -38,6 +38,9 @@ public protocol PumpManagerProtocol {
     /// Start advertising bluetooth device
     func startAdvertising()
 
+    /// Force the PumpManager to go back to its initial state
+    func reset()
+
     /// Stops everything related to this pumpManager.
     /// The pumpManager is put on the background
     func stop()

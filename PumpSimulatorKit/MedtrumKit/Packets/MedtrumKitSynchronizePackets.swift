@@ -69,19 +69,15 @@ extension MedtrumKitPackets {
             ])
             basalData.append(UInt16(state.patchId).toData())
 
-            let currentBaseBasalRate = UInt64(state.currentBaseBasalRate / 0.05)
-
-            if let tempBasalPercentage = state.tempBasalPercentage, let tempBasalStart = state.tempBasalStart {
+            if let tempBasalRate = state.tempBasalRate, let tempBasalStart = state.tempBasalStart {
                 basalData[0] = BasalType.ABSOLUTE_TEMP.rawValue
                 basalData.append(tempBasalStart.toMedtrumSeconds())
-
-                let rateDelivery = (currentBaseBasalRate * UInt64(tempBasalPercentage / 100))
-                basalData.append(rateDelivery.toData(length: 3))
+                basalData.append(UInt64(tempBasalRate / 0.05).toData(length: 3))
 
             } else {
                 basalData[0] = BasalType.STANDARD.rawValue
                 basalData.append(state.basalSince.toMedtrumSeconds())
-                basalData.append(currentBaseBasalRate.toData(length: 3))
+                basalData.append(UInt64(state.currentBaseBasalRate / 0.05).toData(length: 3))
             }
 
             data.append(basalData)

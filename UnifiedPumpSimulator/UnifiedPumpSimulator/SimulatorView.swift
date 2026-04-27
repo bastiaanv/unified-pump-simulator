@@ -60,6 +60,14 @@ struct SimulatorView: View {
                 }
                 .buttonStyle(BlueButtonStyle(primaryColor: Color.red))
             }
+
+            Button(action: { viewModel.resetSimulator() }) {
+                Text("Reset Pump")
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+            }
+            .disabled(viewModel.simulatorRunning)
+            .buttonStyle(BlueButtonStyle(primaryColor: Color.red))
         }
         .frame(maxWidth: 200)
     }
@@ -191,12 +199,14 @@ struct SimulatorView: View {
 }
 
 struct BlueButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) var isEnabled
     let primaryColor: Color
+    var textColor: Color = Color.white
 
     func makeBody(configuration: Self.Configuration) -> some View {
         configuration.label
-            .foregroundColor(configuration.isPressed ? primaryColor : Color.white)
-            .background(configuration.isPressed ? Color.white : primaryColor)
+            .foregroundColor(textColor.opacity(!configuration.isPressed && isEnabled ? 1 : 0.3))
+            .background(primaryColor.opacity(!configuration.isPressed && isEnabled ? 1 : 0.3))
             .cornerRadius(6.0)
     }
 }
