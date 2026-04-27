@@ -115,7 +115,7 @@ class MedtrumKitState {
         let startOfDay = Calendar.current.startOfDay(for: now)
         let nowTimeInterval = now.timeIntervalSince(startOfDay)
 
-        let index = (basal.firstIndex(where: { $0.start > nowTimeInterval }) ?? 24) - 1
+        let index = (basal.firstIndex(where: { $0.start > nowTimeInterval }) ?? basal.count) - 1
         return basal.indices.contains(index) ? basal[index].rate : basal[0].rate
     }
 }

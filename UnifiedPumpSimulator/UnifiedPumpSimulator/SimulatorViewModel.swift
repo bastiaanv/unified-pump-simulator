@@ -1,4 +1,6 @@
 import Combine
+import IOKit
+import IOKit.pwr_mgt
 import PumpSimulatorKit
 import SwiftUI
 
@@ -26,6 +28,9 @@ class SimulatorViewModel: ObservableObject {
     @Published var pumpNotes: String = ""
     @Published var pumpState: String = ""
     @Published var bolusProgress: BolusState? = nil
+
+    private var assertionID: IOPMAssertionID = 0
+    private var sleepDisabled = false
 
     let integerFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
@@ -67,11 +72,27 @@ class SimulatorViewModel: ObservableObject {
     func startSimulator() {
         pumpManager.startAdvertising()
         simulatorRunning = true
+
+        // Disable screen sleep
+        if !sleepDisabled {
+            sleepDisabled = IOPMAssertionCreateWithName(
+                kIOPMAssertionTypeNoDisplaySleep as CFString,
+                IOPMAssertionLevel(kIOPMAssertionLevelOn),
+                "Disable screen sleep" as CFString,
+                &assertionID
+            ) == kIOReturnSuccess
+        }
     }
 
     func stopSimulator() {
         pumpManager.stop()
         simulatorRunning = false
+
+        // Release the sleep lock
+        if sleepDisabled {
+            IOPMAssertionRelease(assertionID)
+            sleepDisabled = false
+        }
     }
 
     func resetSimulator() {
