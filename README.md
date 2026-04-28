@@ -1,6 +1,10 @@
 # unified-pump-simulator
 The MacOS unified pump manager
 
+## Supported pumps
+- Dana-i & DanaRS firmware 3 -> [DanaKit](https://github.com/bastiaanv/DanaKit)
+- Medtrum (200u & 300u) -> [MedtrumKit](https://github.com/jbr7rr/MedtrumKit)
+
 ## How to get started
 
 Clone the repo to your Mac & open the workspace file:
