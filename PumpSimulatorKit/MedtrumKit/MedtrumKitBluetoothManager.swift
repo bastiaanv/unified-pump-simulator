@@ -40,7 +40,7 @@ class MedtrumKitBluetoothManager {
 
         let advertisingData: [String: Any] = [
             CBAdvertisementDataLocalNameKey: "MT",
-            CBAdvertisementDataServiceUUIDsKey: [SERVICE_UUID],
+            CBAdvertisementDataServiceUUIDsKey: [],
         ]
 
         pumpBluetoothManager.startAdvertising(services: [service], advertisingData: advertisingData)

@@ -132,6 +132,10 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
     }
 
     public func stop() {
+        guard isRunning else {
+            return
+        }
+
         bluetooth.stopAdvertising()
         isRunning = false
 

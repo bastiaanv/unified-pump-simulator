@@ -117,7 +117,12 @@ public class DanaKitPumpManager: PumpManagerProtocol {
     }
 
     public func stop() {
+        guard isRunning else {
+            return
+        }
+
         bluetooth.stopAdvertising()
+        isRunning = false
 
         if let bolusTimer = DanaKitMessages.bolusTimer {
             bolusTimer.invalidate()
