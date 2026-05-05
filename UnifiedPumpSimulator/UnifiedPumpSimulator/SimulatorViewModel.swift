@@ -24,6 +24,7 @@ class SimulatorViewModel: ObservableObject {
     @Published var reservoirLevel: String = "0"
     @Published var basalState: String = ""
     @Published var basalIcon: String = "play.fill"
+    @Published var activatedAt: String? = nil
     @Published var batteryLevel: String = ""
     @Published var pumpNotes: String = ""
     @Published var pumpState: String = ""
@@ -53,6 +54,13 @@ class SimulatorViewModel: ObservableObject {
         return formatter
     }()
 
+    let dateSmallFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.timeStyle = .short
+        formatter.dateStyle = .short
+        return formatter
+    }()
+
     let storage = Storage()
     var pumpManager: PumpManagerProtocol
 
@@ -67,6 +75,10 @@ class SimulatorViewModel: ObservableObject {
         PumpManagerLogger.addObserver(self)
 
         updateState(pumpManager: pumpManager)
+
+        Timer.scheduledTimer(withTimeInterval: TimeInterval(5), repeats: true) { _ in
+            self.updateState(pumpManager: pumpManager)
+        }
     }
 
     func startSimulator() {
@@ -117,6 +129,12 @@ extension SimulatorViewModel: StorageDelegate {
             self.reservoirLevel = self.integerFormatter.string(from: pumpManager.reservoirLevel as NSNumber) ?? "0"
             self.bolusProgress = self.pumpManager.bolusProgress
 
+            if let activatedAt = self.pumpManager.activatedAt {
+                self.activatedAt = self.dateSmallFormatter.string(from: activatedAt)
+            } else {
+                self.activatedAt = nil
+            }
+
             if let battery = pumpManager.batteryLevel {
                 self.batteryLevel = battery
             } else {
@@ -131,7 +149,7 @@ extension SimulatorViewModel: StorageDelegate {
                     let timeLeft = start.addingTimeInterval(duration).timeIntervalSinceNow
                     let formatted = Duration(secondsComponent: Int64(timeLeft), attosecondsComponent: 0)
                         .formatted(.time(pattern: .hourMinute))
-                    self.basalState = "Suspended - for: \(formatted)"
+                    self.basalState = "Suspended - for: \(formatted)h"
                 } else {
                     self.basalState = "Suspended - since: \(self.timeFormatter.string(from: start))"
                 }

@@ -7,6 +7,7 @@ class MedtrumKitState {
         reservoirLevel = rawValue["reservoirLevel"] as? Double ?? 0
         suspendedSince = rawValue["suspendedSince"] as? Date
         basalSince = rawValue["basalSince"] as? Date ?? Date.now
+        suspendedDuration = rawValue["suspendedDuration"] as? TimeInterval
         tempBasalRate = rawValue["tempBasalRate"] as? Double
         tempBasalStart = rawValue["tempBasalStart"] as? Date
         tempBasalDuration = rawValue["tempBasalDuration"] as? TimeInterval
@@ -48,6 +49,7 @@ class MedtrumKitState {
         state["reservoirLevel"] = reservoirLevel
         state["basalSince"] = basalSince
         state["suspendedSince"] = suspendedSince
+        state["suspendedDuration"] = suspendedDuration
         state["tempBasalRate"] = tempBasalRate
         state["tempBasalStart"] = tempBasalStart
         state["tempBasalDuration"] = tempBasalDuration

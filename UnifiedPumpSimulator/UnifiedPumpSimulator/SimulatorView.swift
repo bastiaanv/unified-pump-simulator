@@ -134,6 +134,21 @@ struct SimulatorView: View {
                 }
             }
 
+            if let activatedAt = viewModel.activatedAt {
+                HStack(spacing: 5) {
+                    Image(systemName: "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                        .font(.callout)
+                        .foregroundStyle(.blue)
+
+                    Text("Activated at:")
+                        .font(.headline)
+                        .foregroundStyle(.primary)
+
+                    Text(activatedAt)
+                        .foregroundStyle(.primary)
+                }
+            }
+
             if let bolusProgress = viewModel.bolusProgress {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("Bolus progress")
