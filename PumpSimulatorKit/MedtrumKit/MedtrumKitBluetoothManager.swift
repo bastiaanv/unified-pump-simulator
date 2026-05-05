@@ -182,7 +182,7 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
         }
 
         subscribedCentrals.append(central)
-        if let pumpManager = pumpManagerDelegate, pumpManager.state.patchState == .active {
+        if let pumpManager = pumpManagerDelegate {
             let param = MedtrumKitPackets.MedtrumKitPacketRequest(
                 data: buffer,
                 pumpManager: pumpManager,

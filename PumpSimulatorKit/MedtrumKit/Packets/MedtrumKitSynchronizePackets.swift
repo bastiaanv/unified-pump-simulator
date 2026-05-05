@@ -59,7 +59,7 @@ extension MedtrumKitPackets {
 
         // Extended bolus not support via sim
 
-        if state.patchState == .active {
+        if state.patchState == .active || state.patchState == .suspended {
             fieldFlags |= Self.MASK_BASAL
 
             var basalData = Data([
@@ -73,6 +73,11 @@ extension MedtrumKitPackets {
                 basalData[0] = BasalType.ABSOLUTE_TEMP.rawValue
                 basalData.append(tempBasalStart.toMedtrumSeconds())
                 basalData.append(UInt64(tempBasalRate / 0.05).toData(length: 3))
+
+            } else if let suspendedSince = state.suspendedSince {
+                basalData[0] = BasalType.SUSPEND_MANUAL.rawValue
+                basalData.append(suspendedSince.toMedtrumSeconds())
+                basalData.append(UInt64(0).toData(length: 3))
 
             } else {
                 basalData[0] = BasalType.STANDARD.rawValue

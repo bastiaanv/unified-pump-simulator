@@ -76,7 +76,7 @@ class SimulatorViewModel: ObservableObject {
 
         updateState(pumpManager: pumpManager)
 
-        Timer.scheduledTimer(withTimeInterval: TimeInterval(5), repeats: true) { _ in
+        Timer.scheduledTimer(withTimeInterval: TimeInterval(30), repeats: true) { _ in
             self.updateState(pumpManager: pumpManager)
         }
     }
@@ -149,7 +149,7 @@ extension SimulatorViewModel: StorageDelegate {
                     let timeLeft = start.addingTimeInterval(duration).timeIntervalSinceNow
                     let formatted = Duration(secondsComponent: Int64(timeLeft), attosecondsComponent: 0)
                         .formatted(.time(pattern: .hourMinute))
-                    self.basalState = "Suspended - for: \(formatted)h"
+                    self.basalState = "Suspended - remaining: \(formatted)h"
                 } else {
                     self.basalState = "Suspended - since: \(self.timeFormatter.string(from: start))"
                 }
