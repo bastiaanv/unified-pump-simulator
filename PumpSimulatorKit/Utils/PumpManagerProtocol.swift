@@ -52,6 +52,14 @@ public struct PumpManagerCapabitilties {
 
     /// Pods/patches can expire, classic pumps do not
     public let canExpire: Bool
+
+    public var actions: [PumpManagerActions]
+}
+
+public struct PumpManagerActions: Identifiable {
+    public let id = UUID()
+    public let label: String
+    public let action: () -> Void
 }
 
 public struct PumpModel: Identifiable {

@@ -5,12 +5,13 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
     public static let identifier: String = "medtrumkit"
     public var title: String = "MedtrumKit"
 
-    public let capabilities = PumpManagerCapabitilties(
+    public var capabilities = PumpManagerCapabitilties(
         supportedModels: [
             PumpModel(name: "200U", image: Image(imageName: "nano200"), index: 0),
             PumpModel(name: "300U", image: Image(imageName: "nano300"), index: 1),
         ],
-        canExpire: true
+        canExpire: true,
+        actions: []
     )
 
     public var currentModel: PumpModel {
@@ -112,6 +113,13 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         state = MedtrumKitState(rawValue: rawValue)
         bluetooth = MedtrumKitBluetoothManager(pumpBluetoothManager: bluetoothManager)
 
+        capabilities.actions.append(
+            PumpManagerActions(
+                label: "Trigger Occlussion",
+                action: triggerOcclussion
+            )
+        )
+
         bluetooth.pumpManagerDelegate = self
     }
 
@@ -144,5 +152,12 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
 
     func notifyStateDidUpdate() {
         storageDelegate?.saveState(MedtrumKitPumpManager.self, self)
+    }
+
+    private func triggerOcclussion() {
+        state.patchState = .occlusion
+        notifyStateDidUpdate()
+
+        MedtrumKitPackets.synchronizeTimer?.fire()
     }
 }

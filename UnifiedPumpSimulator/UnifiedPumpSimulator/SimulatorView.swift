@@ -12,6 +12,7 @@ struct SimulatorView: View {
                     Divider()
                     PumpState
                     Divider()
+                    PumpActions
                 }
             }
             .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
@@ -171,6 +172,27 @@ struct SimulatorView: View {
 
             Text(viewModel.pumpNotes)
                 .foregroundStyle(.primary)
+        }
+        .padding(.all, 10)
+    }
+
+    @ViewBuilder var PumpActions: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if !viewModel.pumpManagerAction.isEmpty {
+                Text("Actions")
+                    .font(.title3)
+                    .bold()
+            }
+
+            ForEach(viewModel.pumpManagerAction) { action in
+                Button(action: action.action) {
+                    Text(action.label)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(BlueButtonStyle(primaryColor: Color.blue))
+                .disabled(!viewModel.simulatorRunning)
+            }
         }
         .padding(.all, 10)
     }

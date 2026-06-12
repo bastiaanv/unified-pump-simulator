@@ -16,7 +16,8 @@ public class DanaKitPumpManager: PumpManagerProtocol {
             DanaPump.DanaRSv3.getPumpModel(),
             DanaPump.DanaI.getPumpModel(),
         ],
-        canExpire: false
+        canExpire: false,
+        actions: []
     )
 
     public var expiresAt: Date?

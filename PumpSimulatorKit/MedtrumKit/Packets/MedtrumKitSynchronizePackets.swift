@@ -93,17 +93,19 @@ extension MedtrumKitPackets {
             data.append(state.primeProgress ?? 0)
         }
 
-        if state.patchState == .active {
+        if state.patchState.rawValue >= PatchState.active.rawValue {
             fieldFlags |= Self.MASK_RESERVOIR
             data.append(UInt16(state.reservoirLevel / 0.05).toData())
         }
 
-        if state.patchState == .active, let activatedAt = state.activatedAt, longVersion {
+        if state.patchState.rawValue >= PatchState.active.rawValue,
+           let activatedAt = state.activatedAt, longVersion
+        {
             fieldFlags |= Self.MASK_START_TIME
             data.append(activatedAt.toMedtrumSeconds())
         }
 
-        if state.patchState == .active, longVersion {
+        if state.patchState.rawValue >= PatchState.active.rawValue, longVersion {
             fieldFlags |= Self.MASK_BATTERY
 
             let value = UInt64(state.voltageA * 512) + UInt64(state.voltageB * 512) << 12

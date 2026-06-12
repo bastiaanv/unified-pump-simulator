@@ -29,6 +29,7 @@ class SimulatorViewModel: ObservableObject {
     @Published var pumpNotes: String = ""
     @Published var pumpState: String = ""
     @Published var bolusProgress: BolusState? = nil
+    @Published var pumpManagerAction: [PumpManagerActions] = []
 
     private var assertionID: IOPMAssertionID = 0
     private var sleepDisabled = false
@@ -68,6 +69,7 @@ class SimulatorViewModel: ObservableObject {
         self.pumpManager = pumpManager
 
         supportedPumpModels = pumpManager.capabilities.supportedModels
+        pumpManagerAction = pumpManager.capabilities.actions
         currentPump = pumpManager.currentModel
         currentPumpIndex = currentPump.index
 
