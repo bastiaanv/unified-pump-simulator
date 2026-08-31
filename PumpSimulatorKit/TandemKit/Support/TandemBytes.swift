@@ -2,7 +2,7 @@ import Foundation
 import Security
 
 /// Cryptographically secure random bytes (SecRandomCopyBytes with a fallback).
-enum TandemMobiRandom {
+enum TandemRandom {
     static func bytes(_ count: Int) -> Data {
         guard count > 0 else { return Data() }
         var data = Data(count: count)
@@ -18,7 +18,7 @@ enum TandemMobiRandom {
 
 /// Namespaced byte helpers for the Tandem Mobi sim. Modeled on
 /// TandemKit/Sources/TandemCore/Common/Bytes.swift (little-endian throughout).
-enum TandemMobiBytes {
+enum TandemBytes {
     static func combine(_ parts: Data...) -> Data {
         var result = Data()
         for part in parts {

@@ -2,7 +2,7 @@ import CoreBluetooth
 import Foundation
 
 /// One ATT write (one packet) carrying a fragment of a Tron message.
-struct TandemMobiPacket {
+struct TandemPacket {
     let packetsRemaining: UInt8
     let txId: UInt8
     let chunk: Data
@@ -19,7 +19,7 @@ struct TandemMobiPacket {
 
 /// Send-side packetizer (PUMP → CENTRAL) and receive-side defragmenter
 /// (CENTRAL → PUMP). Byte-exact adaptation of TandemKit's `Packetizer.swift`.
-enum TandemMobiPacketizer {
+enum TandemPacketizer {
     private static let defaultChunkSize = 18
 
     private static func chunked(_ data: Data, into size: Int) -> [Data] {
@@ -36,11 +36,11 @@ enum TandemMobiPacketizer {
     /// Builds the sequence of ATT packets that carry `response` to the central,
     /// appending a 24-byte HMAC signature when the response is signed.
     static func packetize(
-        response: TandemMobiResponse,
+        response: TandemResponse,
         authKey: Data?,
         txId: UInt8,
         timeSinceReset: UInt32?
-    ) -> [TandemMobiPacket] {
+    ) -> [TandemPacket] {
         let chunkSize = defaultChunkSize
         let payloadLength = response.cargo.count + (response.signed ? 24 : 0)
         guard payloadLength < 256 else { return [] }
@@ -59,24 +59,24 @@ enum TandemMobiPacketizer {
             packet.append(Data(repeating: 0, count: 24))
             let hmacStartIndex = packet.count - 20
 
-            var messageData = TandemMobiBytes.firstN(packet, hmacStartIndex)
-            let tsrBytes = TandemMobiBytes.u32(timeSinceReset)
+            var messageData = TandemBytes.firstN(packet, hmacStartIndex)
+            let tsrBytes = TandemBytes.u32(timeSinceReset)
             let tsrRange = (messageData.count - 4) ..< messageData.count
             messageData.replaceSubrange(tsrRange, with: tsrBytes)
 
-            let sig = TandemMobiHmac.hmacSha1(data: messageData, key: authKey)
+            let sig = TandemHmac.hmacSha1(data: messageData, key: authKey)
             packet.replaceSubrange(0 ..< hmacStartIndex, with: messageData)
             packet.replaceSubrange(hmacStartIndex ..< hmacStartIndex + sig.count, with: sig)
         }
 
-        let crc = TandemMobiCRC16.calculate(packet)
+        let crc = TandemCRC16.calculate(packet)
         var packetWithCrc = packet
         packetWithCrc.append(crc)
 
         let chunks = chunked(packetWithCrc, into: chunkSize)
         var remaining = chunks.count - 1
         return chunks.map { chunk in
-            let p = TandemMobiPacket(packetsRemaining: UInt8(remaining), txId: txId, chunk: chunk)
+            let p = TandemPacket(packetsRemaining: UInt8(remaining), txId: txId, chunk: chunk)
             remaining -= 1
             return p
         }
@@ -86,7 +86,7 @@ enum TandemMobiPacketizer {
 /// Receive-side defragmenter. The central writes one ATT packet at a time; each
 /// `didReceiveWrite` delivers one packet. We keep per-characteristic accumulation
 /// state and emit a complete `(opCode, cargo, txId)` once packetsRemaining hits 0.
-final class TandemMobiDefragmenter {
+final class TandemDefragmenter {
     private struct Stream {
         var active = false
         var opCode: UInt8 = 0

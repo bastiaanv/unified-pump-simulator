@@ -2,7 +2,7 @@ import Foundation
 
 /// CRC-16 (Computation mode: XMODEM-style table, init 0xFFFF, no final XOR),
 /// byte-exact port of TandemKit/Sources/TandemCore/Common/CRC16.swift.
-enum TandemMobiCRC16 {
+enum TandemCRC16 {
     private static let crcLookupTable: [UInt32] = [
         0, 4129, 8258, 12387, 16516, 20645, 24774, 28903, 33032, 37161, 41290,
         45419, 49548, 53677, 57806, 61935, 4657, 528, 12915, 8786, 21173, 17044,

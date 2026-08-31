@@ -3,7 +3,7 @@ import Foundation
 
 /// HMAC-SHA1 / HMAC-SHA256 / SHA256 helpers. The simulator targets macOS where
 /// CryptoKit is always available, matching TandemKit's CryptoKit-backed helpers.
-enum TandemMobiHmac {
+enum TandemHmac {
     static func hmacSha1(data: Data, key: Data) -> Data {
         let symmetricKey = SymmetricKey(data: key)
         let auth = HMAC<Insecure.SHA1>.authenticationCode(for: data, using: symmetricKey)

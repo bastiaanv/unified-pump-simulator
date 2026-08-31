@@ -7,7 +7,7 @@ import Foundation
     /// EC-JPAKE over P-256 (secp256r1), used as the *server/pump* participant.
     /// Byte-exact port of TandemKit/Sources/TandemCore/Builders/EcJpake.swift made
     /// for the pump side (`role = .server`), so a fresh Loop/Trio central can pair.
-    final class TandemMobiEcJpake {
+    final class TandemEcJpake {
         enum Role {
             case client
             case server
@@ -134,7 +134,7 @@ import Foundation
             let K = try! domainInstance.multiplyPoint(try! domainInstance.addPoints(Xp!, tmp), xm2!)
             let encoded = try! domainInstance.encodePoint(K)
             let xCoord = Data(encoded.dropFirst(1).prefix(32))
-            derivedSecret = TandemMobiHmac.sha256(xCoord)
+            derivedSecret = TandemHmac.sha256(xCoord)
             return derivedSecret!
         }
 
@@ -171,7 +171,7 @@ import Foundation
             appendUInt32BE(UInt32(id.count), to: &out)
             out.append(id)
 
-            let h = TandemMobiHmac.sha256(out)
+            let h = TandemHmac.sha256(out)
             return BInt(magnitude: [UInt8](h)).mod(domainOrder)
         }
 

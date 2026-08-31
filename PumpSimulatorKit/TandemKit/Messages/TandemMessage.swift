@@ -3,7 +3,7 @@ import Foundation
 
 /// GATT services/characteristics that a real Tandem Mobi exposes. Copied from
 /// TandemKit's ServiceUUID.swift / CharacteristicUUID.swift.
-enum TandemMobiCharacteristic {
+enum TandemCharacteristic {
     static let pumpService = CBUUID(string: "0000FDFB-0000-1000-8000-00805F9B34FB")
 
     static let currentStatus = CBUUID(string: "7B83FFF6-9F77-4E5C-8064-AAE2C24838B9")
@@ -24,7 +24,7 @@ enum TandemMobiCharacteristic {
 }
 
 /// Everything the packetizer needs to frame + sign an outgoing response.
-struct TandemMobiResponse {
+struct TandemResponse {
     let opCode: UInt8
     let characteristic: CBUUID
     let signed: Bool
@@ -34,7 +34,7 @@ struct TandemMobiResponse {
 /// Static metadata for a response the simulator can emit, keyed by the
 /// characteristic it travels on (opcodes intentionally overlap across
 /// characteristics, so we never key by opcode alone).
-struct TandemMobiResponseSpec {
+struct TandemResponseSpec {
     let opCode: UInt8
     let characteristic: CBUUID
     let signed: Bool
@@ -42,12 +42,12 @@ struct TandemMobiResponseSpec {
 
 /// Response opcode registry built from TandemKit's MessageRegistry. Keys are
 /// (characteristic, responseOpCode).
-enum TandemMobiRegistry {
-    static let authorization = TandemMobiCharacteristic.authorization
-    static let currentStatus = TandemMobiCharacteristic.currentStatus
-    static let control = TandemMobiCharacteristic.control
+enum TandemRegistry {
+    static let authorization = TandemCharacteristic.authorization
+    static let currentStatus = TandemCharacteristic.currentStatus
+    static let control = TandemCharacteristic.control
 
-    static let all: [String: TandemMobiResponseSpec] = Dictionary(uniqueKeysWithValues: [
+    static let all: [String: TandemResponseSpec] = Dictionary(uniqueKeysWithValues: [
         // Authentication
         spec(authorization, 17, false), // CentralChallengeResponse
         spec(authorization, 19, false), // PumpChallengeResponse
@@ -91,15 +91,15 @@ enum TandemMobiRegistry {
         spec(control, 251, true), // AdditionalBolusResponse
     ])
 
-    private static func spec(_ characteristic: CBUUID, _ opCode: UInt8, _ signed: Bool) -> (String, TandemMobiResponseSpec) {
-        (key(characteristic, opCode), TandemMobiResponseSpec(opCode: opCode, characteristic: characteristic, signed: signed))
+    private static func spec(_ characteristic: CBUUID, _ opCode: UInt8, _ signed: Bool) -> (String, TandemResponseSpec) {
+        (key(characteristic, opCode), TandemResponseSpec(opCode: opCode, characteristic: characteristic, signed: signed))
     }
 
     static func key(_ characteristic: CBUUID, _ opCode: UInt8) -> String {
         characteristic.uuidString + "-" + String(opCode)
     }
 
-    static func spec(for characteristic: CBUUID, opCode: UInt8) -> TandemMobiResponseSpec? {
+    static func spec(for characteristic: CBUUID, opCode: UInt8) -> TandemResponseSpec? {
         all[key(characteristic, opCode)]
     }
 }

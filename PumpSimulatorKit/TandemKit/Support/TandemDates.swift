@@ -2,7 +2,7 @@ import Foundation
 
 /// Tandem pump epoch (seconds since 2008-01-01). Port of
 /// TandemKit/Sources/TandemCore/Common/Dates.swift.
-enum TandemMobiDates {
+enum TandemDates {
     static let january12008UnixEpoch: TimeInterval = 1_199_145_600
 
     static func currentTimeSinceJan12008() -> UInt32 {

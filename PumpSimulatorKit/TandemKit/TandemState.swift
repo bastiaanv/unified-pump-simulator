@@ -4,7 +4,7 @@ import Foundation
 /// `StateRawValue` the same way `MedtrumKitState` does, and additionally stores
 /// the JPAKE pairing artifacts so a reconnecting central that believes it is
 /// already paired can skip the full handshake.
-class TandemMobiState {
+class TandemState {
     init(rawValue: StateRawValue) {
         reservoirLevel = rawValue["reservoirLevel"] as? Double ?? 100
         batteryPercent = rawValue["batteryPercent"] as? UInt8 ?? 100

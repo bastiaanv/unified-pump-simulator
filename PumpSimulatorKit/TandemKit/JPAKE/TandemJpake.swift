@@ -3,7 +3,7 @@ import Foundation
 #if canImport(SwiftECC) && canImport(BigInt)
     /// Splits and reassembles the two 165-byte JPAKE frames the pump exchanges.
     /// Port of TandemKit's `JpakeRound1Framing`.
-    enum TandemMobiJpakeRound1Framing {
+    enum TandemJpakeRound1Framing {
         static let frameSize = 165
 
         static func groupLength(in data: Data, at offset: Int) -> Int? {
@@ -18,7 +18,7 @@ import Foundation
         }
 
         static func padToFrame(_ data: Data) -> Data {
-            TandemMobiBytes.pad(data, to: frameSize)
+            TandemBytes.pad(data, to: frameSize)
         }
 
         static func splitRound1(_ round1: Data) -> (first: Data, second: Data)? {
@@ -37,16 +37,16 @@ import Foundation
 
         static func joinRound1(first: Data, second: Data) -> Data {
             guard let firstLength = groupLength(in: first, at: 0) else {
-                return TandemMobiBytes.combine(first, second)
+                return TandemBytes.combine(first, second)
             }
             let start = first.startIndex
-            return TandemMobiBytes.combine(first.subdata(in: start ..< start + firstLength), second)
+            return TandemBytes.combine(first.subdata(in: start ..< start + firstLength), second)
         }
     }
 
     /// Pump-side JPAKE responder state machine. Mirrors what a real Mobi's
     /// firmware does when a central runs `JpakeAuthBuilder` against it.
-    final class TandemMobiJpake {
+    final class TandemJpake {
         enum Phase {
             case idle
             case round1Pending // awaiting Jpake1bRequest
@@ -56,7 +56,7 @@ import Foundation
             case complete
         }
 
-        private var ecJpake: TandemMobiEcJpake
+        private var ecJpake: TandemEcJpake
         private var password: Data
         private var phase: Phase = .idle
         private var round1First: Data?
@@ -71,11 +71,11 @@ import Foundation
         private var serverNonce4: Data?
 
         init(pairingCode: String, existingDerivedSecret: Data? = nil) {
-            password = TandemMobiJpake.pairingCodeToBytes(pairingCode)
-            ecJpake = TandemMobiEcJpake(
+            password = TandemJpake.pairingCodeToBytes(pairingCode)
+            ecJpake = TandemEcJpake(
                 role: .server,
                 password: password,
-                random: TandemMobiRandom.bytes
+                random: TandemRandom.bytes
             )
             // Reconnecting central that already paired: skip rounds 1-2 and only
             // do the short key-confirmation path (rounds 3+4).
@@ -95,27 +95,27 @@ import Foundation
         /// Called when the central sends a request on AUTHORIZATION. Returns the
         /// matching response (opcode + cargo) or nil for unexpected/unknown ops.
         func handleRequest(opCode: UInt8, cargo: Data) -> (opCode: UInt8, cargo: Data)? {
-            let appInstanceId = cargo.count >= 2 ? TandemMobiBytes.readU16(cargo, 0) : 0
+            let appInstanceId = cargo.count >= 2 ? TandemBytes.readU16(cargo, 0) : 0
 
             switch opCode {
             case 32: // Jpake1aRequest — first client round-1 frame
                 let round1 = ecJpake.getRound1()
-                guard let frames = TandemMobiJpakeRound1Framing.splitRound1(round1)
+                guard let frames = TandemJpakeRound1Framing.splitRound1(round1)
                 else { return nil }
                 round1First = frames.first
                 round1Second = frames.second
                 peerRound1First = frame(cargo)
                 phase = .round1Pending
-                return (33, TandemMobiBytes.combine(TandemMobiBytes.u16(appInstanceId), round1First!))
+                return (33, TandemBytes.combine(TandemBytes.u16(appInstanceId), round1First!))
 
             case 34: // Jpake1bRequest — second client round-1 frame
                 peerRound1Second = frame(cargo)
                 if let first = peerRound1First, let second = peerRound1Second {
-                    let full = TandemMobiJpakeRound1Framing.joinRound1(first: first, second: second)
+                    let full = TandemJpakeRound1Framing.joinRound1(first: first, second: second)
                     ecJpake.readRound1(full)
                 }
                 phase = .round1Complete
-                return (35, TandemMobiBytes.combine(TandemMobiBytes.u16(appInstanceId), round1Second!))
+                return (35, TandemBytes.combine(TandemBytes.u16(appInstanceId), round1Second!))
 
             case 36: // Jpake2Request — client round 2
                 guard phase == .round1Complete else { return nil }
@@ -123,17 +123,17 @@ import Foundation
                 ecJpake.readRound2(clientRound2)
                 let serverRound2 = ecJpake.getRound2()
                 phase = .round2Complete
-                return (37, TandemMobiBytes.combine(TandemMobiBytes.u16(appInstanceId), serverRound2))
+                return (37, TandemBytes.combine(TandemBytes.u16(appInstanceId), serverRound2))
 
             case 38: // Jpake3SessionKeyRequest
                 guard phase == .round2Complete else { return nil }
                 if derivedSecret == nil {
                     derivedSecret = ecJpake.deriveSecret()
                 }
-                serverNonce3 = TandemMobiJpake.randomBytes(8)
+                serverNonce3 = TandemJpake.randomBytes(8)
                 let reserved = Data(repeating: 0, count: 8)
-                let cargo = TandemMobiBytes.combine(
-                    TandemMobiBytes.u16(appInstanceId),
+                let cargo = TandemBytes.combine(
+                    TandemBytes.u16(appInstanceId),
                     serverNonce3!,
                     reserved
                 )
@@ -150,16 +150,16 @@ import Foundation
                 // Verify the client's hashDigest.
                 let clientNonce = cargo.subdata(in: 2 ..< 10)
                 let clientDigest = cargo.subdata(in: 18 ..< cargo.count)
-                let key = TandemMobiHkdf.build(nonce: serverNonce3, keyMaterial: derivedSecret)
-                let expected = TandemMobiHmac.hmacSha256(data: clientNonce, key: key)
+                let key = TandemHkdf.build(nonce: serverNonce3, keyMaterial: derivedSecret)
+                let expected = TandemHmac.hmacSha256(data: clientNonce, key: key)
 
                 // Even on failure we reply (the central reports the mismatch), but
                 // only a verified digest advances us to `complete`.
-                serverNonce4 = TandemMobiJpake.randomBytes(8)
+                serverNonce4 = TandemJpake.randomBytes(8)
                 let reserved = Data(repeating: 0, count: 8)
-                let serverDigest = TandemMobiHmac.hmacSha256(data: serverNonce4!, key: key)
-                let response = TandemMobiBytes.combine(
-                    TandemMobiBytes.u16(appInstanceId),
+                let serverDigest = TandemHmac.hmacSha256(data: serverNonce4!, key: key)
+                let response = TandemBytes.combine(
+                    TandemBytes.u16(appInstanceId),
                     serverNonce4!,
                     reserved,
                     serverDigest
@@ -183,10 +183,10 @@ import Foundation
             derivedSecret = nil
             serverNonce3 = nil
             serverNonce4 = nil
-            ecJpake = TandemMobiEcJpake(
+            ecJpake = TandemEcJpake(
                 role: .server,
                 password: password,
-                random: TandemMobiRandom.bytes
+                random: TandemRandom.bytes
             )
             if let secret = derivedSecret, !secret.isEmpty {
                 phase = .round2Complete
@@ -194,8 +194,8 @@ import Foundation
         }
 
         private func frame(_ cargo: Data) -> Data {
-            if cargo.count >= 2 + TandemMobiJpakeRound1Framing.frameSize {
-                return cargo.subdata(in: 2 ..< 2 + TandemMobiJpakeRound1Framing.frameSize)
+            if cargo.count >= 2 + TandemJpakeRound1Framing.frameSize {
+                return cargo.subdata(in: 2 ..< 2 + TandemJpakeRound1Framing.frameSize)
             }
             return Data()
         }
@@ -226,7 +226,7 @@ import Foundation
 #else
     /// SwiftECC unavailable — pairing over JPAKE cannot be performed. The manager
     /// degrades (logs an error) rather than crashing the whole simulator.
-    final class TandemMobiJpake {
+    final class TandemJpake {
         enum Phase { case idle, complete }
         private(set) var derivedSecret: Data?
         private(set) var serverNonce3: Data?

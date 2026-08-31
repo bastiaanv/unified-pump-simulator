@@ -3,7 +3,7 @@ import SwiftUI
 
 public class FlexKitPumpManager: PumpManagerProtocol {
     public static let identifier: String = "minimedflex"
-    public var title: String = "MiniMed Flex"
+    public var title: String = "FlexKit"
 
     public var capabilities = PumpManagerCapabitilties(
         supportedModels: [
