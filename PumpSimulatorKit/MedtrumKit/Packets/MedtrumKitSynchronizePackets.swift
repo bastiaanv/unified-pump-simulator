@@ -55,6 +55,13 @@ extension MedtrumKitPackets {
             bolusData.append(UInt16(bolusProgress / 0.05).toData())
 
             data.append(bolusData)
+        } else {
+            fieldFlags |= Self.MASK_NORMAL_BOLUS
+
+            var bolusData = Data([0x80])
+            bolusData.append(UInt16(0).toData())
+
+            data.append(bolusData)
         }
 
         // Extended bolus not support via sim

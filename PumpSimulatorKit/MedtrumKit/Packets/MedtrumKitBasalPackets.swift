@@ -99,7 +99,7 @@ extension MedtrumKitPackets {
         response.append(Date.now.toMedtrumSeconds())
 
         bluetoothManager.writeResponse(data: response, status: .ok, params.responseParam)
-        logger.info("Processed TempBasal message!")
+        logger.info("Processed Stop TempBasal message!")
     }
 
     static func parseTempBasalPacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
