@@ -9,13 +9,13 @@ import Foundation
 /// inbound *bolus param* frame (layout `[type<<1 u8][normal mU u32][square mU u32]
 /// [squareDur u16][0x02]`, `packets/03 §2.4`) starts a simulated delivery, and the
 /// pump emits accept + command-result responses.
-enum MiniMedKitCommandPackets {
-    static let logger = PumpManagerLogger(subsystem: "com.bastiaanv.minimedkit", category: "MiniMedKitCommandPackets")
+enum FlexKitCommandPackets {
+    static let logger = PumpManagerLogger(subsystem: "com.bastiaanv.flexkit", category: "FlexKitCommandPackets")
 
     static var bolusTimer: Timer?
     private static var currentTransaction: UInt16 = 0
 
-    static func process(messageID _: UInt16, payload: Data, params: MiniMedKitBluetoothManager.PacketParams) {
+    static func process(messageID _: UInt16, payload: Data, params: FlexKitBluetoothManager.PacketParams) {
         // Suspend / resume (very light heuristics — opcode byte 0x04 = cancel in the
         // command-control response space; treated here as suspend). Kept explicit so
         // a real capture can be wired in later.
@@ -42,7 +42,7 @@ enum MiniMedKitCommandPackets {
 
     // MARK: - Bolus
 
-    private static func startBolus(_ payload: Data, _ params: MiniMedKitBluetoothManager.PacketParams) {
+    private static func startBolus(_ payload: Data, _ params: FlexKitBluetoothManager.PacketParams) {
         let pumpManager = params.pumpManager
         let normalMU = payload.miniMedUInt32(1)
         let amount = Double(normalMU) / 1000.0
@@ -113,8 +113,8 @@ enum MiniMedKitCommandPackets {
 
     private static func scheduleBolus(
         amount: Double,
-        pumpManager: MiniMedKitPumpManager,
-        params _: MiniMedKitBluetoothManager.PacketParams
+        pumpManager: FlexKitPumpManager,
+        params _: FlexKitBluetoothManager.PacketParams
     ) {
         // 1.5 U per minute (matches the Medtrum simulator's delivery model).
         let duration = amount / 1.5 * TimeInterval.minutes(1)
@@ -150,7 +150,7 @@ enum MiniMedKitCommandPackets {
 
     // MARK: - Suspend
 
-    private static func suspendPump(_ params: MiniMedKitBluetoothManager.PacketParams) {
+    private static func suspendPump(_ params: FlexKitBluetoothManager.PacketParams) {
         let state = params.pumpManager.state
         if state.suspendedSince == nil {
             state.suspendedSince = Date.now
@@ -168,7 +168,7 @@ enum MiniMedKitCommandPackets {
         logger.info("Toggled suspend/resume")
     }
 
-    private static func sendProtocolError(_ params: MiniMedKitBluetoothManager.PacketParams) {
+    private static func sendProtocolError(_ params: FlexKitBluetoothManager.PacketParams) {
         params.manager.sendCCMP(
             messageID: CcmpMsgID.commandControl.rawValue,
             payload: Data([0x09, 0x01]),

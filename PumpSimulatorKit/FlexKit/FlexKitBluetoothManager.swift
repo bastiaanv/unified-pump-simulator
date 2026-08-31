@@ -4,9 +4,9 @@ import Foundation
 /// The MiniMed Flex pump GATT server. Registers the services/characteristics from
 /// `GATT/GATTProfile.swift`, receives the phone's writes, and dispatches each CCMP
 /// message to the secure-link handler or the therapy/status packet handlers.
-class MiniMedKitBluetoothManager {
-    var pumpManagerDelegate: MiniMedKitPumpManager?
-    let logger = PumpManagerLogger(subsystem: "com.bastiaanv.minimedkit", category: "MiniMedKitBluetoothManager")
+class FlexKitBluetoothManager {
+    var pumpManagerDelegate: FlexKitPumpManager?
+    let logger = PumpManagerLogger(subsystem: "com.bastiaanv.flexkit", category: "FlexKitBluetoothManager")
     private let pumpBluetoothManager: PumpBluetoothmanager
 
     // Secure-link machinery (Tier A: transparent link).
@@ -164,7 +164,7 @@ class MiniMedKitBluetoothManager {
 
 // MARK: - Inbound processing
 
-extension MiniMedKitBluetoothManager {
+extension FlexKitBluetoothManager {
     /// Parse the raw value written by the phone into a CCMP frame.
     private func parseInbound(
         characteristic: CBCharacteristic,
@@ -248,7 +248,7 @@ extension MiniMedKitBluetoothManager {
     private func handleTherapy(
         messageID: UInt16,
         payload: Data,
-        pumpManager: MiniMedKitPumpManager,
+        pumpManager: FlexKitPumpManager,
         peripheralManager: CBPeripheralManager
     ) {
         let params = PacketParams(
@@ -258,22 +258,22 @@ extension MiniMedKitBluetoothManager {
             messageID: messageID
         )
 
-        if MiniMedKitTimePackets.process(payload, params) {
+        if FlexKitTimePackets.process(payload, params) {
             return
         }
-        if MiniMedKitStatusPackets.process(payload, params) {
+        if FlexKitStatusPackets.process(payload, params) {
             return
         }
-        if MiniMedKitSystemConfigPackets.process(payload, params) {
+        if FlexKitSystemConfigPackets.process(payload, params) {
             return
         }
-        MiniMedKitCommandPackets.process(messageID: messageID, payload: payload, params: params)
+        FlexKitCommandPackets.process(messageID: messageID, payload: payload, params: params)
     }
 }
 
 // MARK: - Write sending
 
-extension MiniMedKitBluetoothManager {
+extension FlexKitBluetoothManager {
     struct WriteParams {
         let characteristic: CBMutableCharacteristic
         let peripheralManager: CBPeripheralManager
@@ -282,8 +282,8 @@ extension MiniMedKitBluetoothManager {
     /// Context handed to the packet handlers so they can mutate `state`, notify the
     /// UI, and push responses back onto the write queue.
     struct PacketParams {
-        let manager: MiniMedKitBluetoothManager
-        let pumpManager: MiniMedKitPumpManager
+        let manager: FlexKitBluetoothManager
+        let pumpManager: FlexKitPumpManager
         let peripheralManager: CBPeripheralManager
         let messageID: UInt16
     }
@@ -330,7 +330,7 @@ extension MiniMedKitBluetoothManager {
 
 // MARK: - BluetoothManagerDelegate
 
-extension MiniMedKitBluetoothManager: BluetoothManagerDelegate {
+extension FlexKitBluetoothManager: BluetoothManagerDelegate {
     func didStartAdvertising(_ error: (any Error)?) {
         if let error = error {
             logger.error("Failed to start advertising: \(error.localizedDescription)")

@@ -2,10 +2,10 @@ import Foundation
 
 /// Status & history handlers — RACP (record access) and SRCP (status control).
 /// `packets/06 §3/§4`. These ride as CCMP payloads.
-enum MiniMedKitStatusPackets {
-    static let logger = PumpManagerLogger(subsystem: "com.bastiaanv.minimedkit", category: "MiniMedKitStatusPackets")
+enum FlexKitStatusPackets {
+    static let logger = PumpManagerLogger(subsystem: "com.bastiaanv.flexkit", category: "FlexKitStatusPackets")
 
-    static func process(_ payload: Data, _ params: MiniMedKitBluetoothManager.PacketParams) -> Bool {
+    static func process(_ payload: Data, _ params: FlexKitBluetoothManager.PacketParams) -> Bool {
         // RACP history request `[0x66][operator][0x1E][start:4][end:4]`.
         if payload.count >= 3, payload[0] == 0x66 {
             processRacp(payload, params)
@@ -23,7 +23,7 @@ enum MiniMedKitStatusPackets {
 
     // MARK: - RACP history
 
-    private static func processRacp(_ payload: Data, _ params: MiniMedKitBluetoothManager.PacketParams) {
+    private static func processRacp(_ payload: Data, _ params: FlexKitBluetoothManager.PacketParams) {
         let operatorValue = payload.miniMedUInt8(1)
         let records = params.pumpManager.state.historyRecords
 
@@ -58,7 +58,7 @@ enum MiniMedKitStatusPackets {
 
     // MARK: - SRCP status
 
-    private static func processSrcp(_ payload: Data, _ params: MiniMedKitBluetoothManager.PacketParams) {
+    private static func processSrcp(_ payload: Data, _ params: FlexKitBluetoothManager.PacketParams) {
         let opcode = payload.miniMedUInt16(0)
         let state = params.pumpManager.state
 

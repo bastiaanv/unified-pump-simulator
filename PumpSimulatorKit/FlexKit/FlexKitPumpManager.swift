@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-public class MiniMedKitPumpManager: PumpManagerProtocol {
+public class FlexKitPumpManager: PumpManagerProtocol {
     public static let identifier: String = "minimedflex"
     public var title: String = "MiniMed Flex"
 
@@ -44,7 +44,7 @@ public class MiniMedKitPumpManager: PumpManagerProtocol {
     }
 
     public var activatedAt: Date? {
-        state.activatedAt
+        nil
     }
 
     public var basal: [BasalItem] {
@@ -97,14 +97,14 @@ public class MiniMedKitPumpManager: PumpManagerProtocol {
         state.getRaw()
     }
 
-    private let logger = PumpManagerLogger(subsystem: "com.bastiaanv.minimedkit", category: "MiniMedKitPumpManager")
-    let bluetooth: MiniMedKitBluetoothManager
-    var state: MiniMedKitState
+    private let logger = PumpManagerLogger(subsystem: "com.bastiaanv.flexkit", category: "FlexKitPumpManager")
+    let bluetooth: FlexKitBluetoothManager
+    var state: FlexKitState
     var isRunning: Bool = false
 
     public required init(rawValue: StateRawValue, bluetoothManager: PumpBluetoothmanager) {
-        state = MiniMedKitState(rawValue: rawValue)
-        bluetooth = MiniMedKitBluetoothManager(pumpBluetoothManager: bluetoothManager)
+        state = FlexKitState(rawValue: rawValue)
+        bluetooth = FlexKitBluetoothManager(pumpBluetoothManager: bluetoothManager)
         bluetooth.pumpManagerDelegate = self
     }
 
@@ -119,7 +119,7 @@ public class MiniMedKitPumpManager: PumpManagerProtocol {
     }
 
     public func reset() {
-        state = MiniMedKitState(rawValue: [:])
+        state = FlexKitState(rawValue: [:])
         bluetooth.stopAdvertising()
         isRunning = false
         notifyStateDidUpdate()
@@ -133,15 +133,15 @@ public class MiniMedKitPumpManager: PumpManagerProtocol {
         bluetooth.stopAdvertising()
         isRunning = false
 
-        if let bolusTimer = MiniMedKitCommandPackets.bolusTimer {
+        if let bolusTimer = FlexKitCommandPackets.bolusTimer {
             bolusTimer.invalidate()
-            MiniMedKitCommandPackets.bolusTimer = nil
+            FlexKitCommandPackets.bolusTimer = nil
         }
 
         logger.info("MiniMedFlex simulator has been stopped!")
     }
 
     func notifyStateDidUpdate() {
-        storageDelegate?.saveState(MiniMedKitPumpManager.self, self)
+        storageDelegate?.saveState(FlexKitPumpManager.self, self)
     }
 }

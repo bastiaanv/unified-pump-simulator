@@ -29,6 +29,13 @@ struct Managers: Identifiable {
                     bluetoothManager: bluetooth
                 )
             ),
+            Managers(
+                icon: "3.circle",
+                manager: FlexKitPumpManager(
+                    rawValue: storage.getState(FlexKitPumpManager.self) ?? [:],
+                    bluetoothManager: bluetooth
+                )
+            ),
         ]
     }
 

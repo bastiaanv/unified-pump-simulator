@@ -85,7 +85,9 @@ public class PumpManagerLogger {
 }
 
 private extension String {
-    var file: String { components(separatedBy: "/").last ?? "" }
+    var file: String {
+        components(separatedBy: "/").last ?? ""
+    }
 }
 
 public protocol LoggerObserver {

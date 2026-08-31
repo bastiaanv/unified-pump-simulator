@@ -48,7 +48,7 @@ struct BasalPatternSegment: Codable {
 }
 
 /// Persistable state for a MiniMed Flex (a classic tube pump).
-class MiniMedKitState {
+class FlexKitState {
     init(rawValue: StateRawValue) {
         currentModelIndex = rawValue["currentModelIndex"] as? Int ?? 0
         activatedAt = rawValue["activatedAt"] as? Date

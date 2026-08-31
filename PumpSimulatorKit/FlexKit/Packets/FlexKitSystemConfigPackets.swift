@@ -1,12 +1,12 @@
 import Foundation
 
 /// IDD System Configuration (`packets/05`). First wire byte is the opcode.
-/// Implements the reads that map onto `MiniMedKitState` plus the
+/// Implements the reads that map onto `FlexKitState` plus the
 /// `WriteControllerData` CRC32 validation.
-enum MiniMedKitSystemConfigPackets {
-    static let logger = PumpManagerLogger(subsystem: "com.bastiaanv.minimedkit", category: "MiniMedKitSystemConfigPackets")
+enum FlexKitSystemConfigPackets {
+    static let logger = PumpManagerLogger(subsystem: "com.bastiaanv.flexkit", category: "FlexKitSystemConfigPackets")
 
-    static func process(_ payload: Data, _ params: MiniMedKitBluetoothManager.PacketParams) -> Bool {
+    static func process(_ payload: Data, _ params: FlexKitBluetoothManager.PacketParams) -> Bool {
         guard let op = payload.first else { return false }
 
         switch op {
@@ -32,7 +32,7 @@ enum MiniMedKitSystemConfigPackets {
 
     // `[op u8][configurationType u8][status u8][ctx?][value …]` (`packets/05 §4.1`).
 
-    private static func readConfiguration(_ payload: Data, _ params: MiniMedKitBluetoothManager.PacketParams) {
+    private static func readConfiguration(_ payload: Data, _ params: FlexKitBluetoothManager.PacketParams) {
         guard payload.count >= 2 else { return }
         let type = payload[1]
         let state = params.pumpManager.state
@@ -77,7 +77,7 @@ enum MiniMedKitSystemConfigPackets {
 
     // MARK: - ReadBasalPattern (0x03)
 
-    private static func readBasalPattern(_ payload: Data, _ params: MiniMedKitBluetoothManager.PacketParams) {
+    private static func readBasalPattern(_ payload: Data, _ params: FlexKitBluetoothManager.PacketParams) {
         let index = payload.count >= 2 ? payload[1] : 0
         let pattern = params.pumpManager.state.basalPatterns.first(where: { $0.id == index })
 
@@ -101,7 +101,7 @@ enum MiniMedKitSystemConfigPackets {
 
     // `[op u8][numberOfBasalPatterns u8][basalPatternIdFlags u8][activeBasalPatternId u8]`
 
-    private static func readAvailableBasalPattern(_ params: MiniMedKitBluetoothManager.PacketParams) {
+    private static func readAvailableBasalPattern(_ params: FlexKitBluetoothManager.PacketParams) {
         let count = UInt8(min(params.pumpManager.state.basalPatterns.count, 0xFF))
         let body = Data([0x05, count, 0x00, 0x01])
         params.manager.sendCCMP(
@@ -116,7 +116,7 @@ enum MiniMedKitSystemConfigPackets {
 
     // `[op 0x0F][bg u16][flag u8][timestamp u32][source u8]` → append a BG history record.
 
-    private static func enterBg(_ payload: Data, _ params: MiniMedKitBluetoothManager.PacketParams) {
+    private static func enterBg(_ payload: Data, _ params: FlexKitBluetoothManager.PacketParams) {
         guard payload.count >= 9 else { return }
         var record = Data()
         record.append(payload[1])
@@ -136,7 +136,7 @@ enum MiniMedKitSystemConfigPackets {
 
     // MARK: - ReadHash (0x11)
 
-    private static func readHash(_: Data, _ params: MiniMedKitBluetoothManager.PacketParams) {
+    private static func readHash(_: Data, _ params: FlexKitBluetoothManager.PacketParams) {
         // `[op][status][count][hashContext u32][{hash u8}{value u32} ×count]`
         var body = Data([0x11, 0x01, 0x00])
         body.append(UInt32(0).miniMedData())
@@ -150,7 +150,7 @@ enum MiniMedKitSystemConfigPackets {
 
     // MARK: - WriteControllerData (0x15) — CRC32 validated.
 
-    private static func writeControllerData(_ payload: Data, _ params: MiniMedKitBluetoothManager.PacketParams) {
+    private static func writeControllerData(_ payload: Data, _ params: FlexKitBluetoothManager.PacketParams) {
         // `[op 0x15][len u8][payload …][crc32 u32 LE]`
         guard payload.count >= 6 else {
             respondWriteControllerData(status: 0x02, params: params)
@@ -181,7 +181,7 @@ enum MiniMedKitSystemConfigPackets {
         logger.info("WriteControllerData accepted (CRC ok)")
     }
 
-    private static func respondWriteControllerData(status: UInt8, params: MiniMedKitBluetoothManager.PacketParams) {
+    private static func respondWriteControllerData(status: UInt8, params: FlexKitBluetoothManager.PacketParams) {
         // `[op 0x15][status][ctx]`
         params.manager.sendCCMP(
             messageID: CcmpMsgID.commandControl.rawValue,
@@ -193,7 +193,7 @@ enum MiniMedKitSystemConfigPackets {
 
     // MARK: - ReadControllerData (0x17)
 
-    private static func readControllerData(_ payload: Data, _ params: MiniMedKitBluetoothManager.PacketParams) {
+    private static func readControllerData(_ payload: Data, _ params: FlexKitBluetoothManager.PacketParams) {
         let type = payload.count >= 2 ? payload[1] : 0
         var body = Data([0x17, 0x01, type])
         let crc = Crc32.calculate(Data([type]))

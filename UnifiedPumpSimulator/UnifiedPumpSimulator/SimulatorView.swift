@@ -27,7 +27,7 @@ struct SimulatorView: View {
         .navigationTitle("Unified pump simulator - " + viewModel.pumpManager.title)
     }
 
-    @ViewBuilder var PumpSelector: some View {
+    var PumpSelector: some View {
         VStack {
             viewModel.currentPump.image
                 .resizable()
@@ -73,7 +73,7 @@ struct SimulatorView: View {
         .frame(maxWidth: 200)
     }
 
-    @ViewBuilder var PumpState: some View {
+    var PumpState: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Pump Status")
                 .font(.title3)
@@ -176,7 +176,7 @@ struct SimulatorView: View {
         .padding(.all, 10)
     }
 
-    @ViewBuilder var PumpActions: some View {
+    var PumpActions: some View {
         VStack(alignment: .leading, spacing: 10) {
             if !viewModel.pumpManagerAction.isEmpty {
                 Text("Actions")
@@ -197,7 +197,7 @@ struct SimulatorView: View {
         .padding(.all, 10)
     }
 
-    @ViewBuilder var LoggerView: some View {
+    var LoggerView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 5) {
                 ForEach($viewModel.logLines) { line in

@@ -29,7 +29,7 @@ enum CcmpMsgID: UInt16 {
     case fotaInstallRsp = 0x0412
     case fotaCancelRsp = 0x0416
 
-    // Therapy / status command messages (unpinned message-ids — see MiniMedKitLinkConfig)
+    // Therapy / status command messages (unpinned message-ids — see FlexKitLinkConfig)
     case commandControl = 0x01A0 // IDD command control traffic
     case srcp = 0x01B0 // status control point
     case deviceTime = 0x01C0 // device-time control point

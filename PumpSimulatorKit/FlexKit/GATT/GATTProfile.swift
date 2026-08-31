@@ -11,13 +11,13 @@ import Foundation
 /// UUID bases:
 /// - Primary Medtronic base: `-0000-1000-0000-009132591325`
 /// - Secondary / MTS base:   `-0000-2000-0000-009132591325`
-/// - Bluetooth SIG base:     `-0000-8000-00805F9B34FB`
+/// - Bluetooth SIG base:     `-0000-1000-8000-00805F9B34FB`
 public enum MiniMedGATT {
     // MARK: - UUID bases
 
     public static let primarySuffix = "-0000-1000-0000-009132591325"
     public static let mtsSuffix = "-0000-2000-0000-009132591325"
-    public static let sigSuffix = "-0000-8000-00805F9B34FB"
+    public static let sigSuffix = "-0000-1000-8000-00805F9B34FB"
 
     /// Medtronic manufacturer company id `0x1010` (little-endian bytes `10 10`).
     public static let medtronicCompanyID: UInt16 = 0x1010

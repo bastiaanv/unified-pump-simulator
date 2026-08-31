@@ -26,6 +26,11 @@
 			path = MedtrumKit;
 			sourceTree = "<group>";
 		};
+		3EE348B02ECA1A80008A07F6 /* FlexKit */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FlexKit;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -44,6 +49,7 @@
 			children = (
 				3EE348AE2ECA1A77008A07F6 /* DanaKit */,
 				3EE348AF2ECA1A7F008A07F6 /* MedtrumKit */,
+				3EE348B02ECA1A80008A07F6 /* FlexKit */,
 				3EE348AD2ECA1A67008A07F6 /* Utils */,
 				3EE347632EC96143008A07F6 /* Products */,
 			);
@@ -87,6 +93,7 @@
 				3EE348AD2ECA1A67008A07F6 /* Utils */,
 				3EE348AE2ECA1A77008A07F6 /* DanaKit */,
 				3EE348AF2ECA1A7F008A07F6 /* MedtrumKit */,
+				3EE348B02ECA1A80008A07F6 /* FlexKit */,
 			);
 			name = PumpSimulatorKit;
 			packageProductDependencies = (
