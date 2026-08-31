@@ -31,6 +31,11 @@
 			path = FlexKit;
 			sourceTree = "<group>";
 		};
+		3E0000000000000000000001 /* TandemMobiKit */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = TandemMobiKit;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -50,6 +55,7 @@
 				3EE348AE2ECA1A77008A07F6 /* DanaKit */,
 				3EE348AF2ECA1A7F008A07F6 /* MedtrumKit */,
 				3EE348B02ECA1A80008A07F6 /* FlexKit */,
+				3E0000000000000000000001 /* TandemMobiKit */,
 				3EE348AD2ECA1A67008A07F6 /* Utils */,
 				3EE347632EC96143008A07F6 /* Products */,
 			);
@@ -94,9 +100,12 @@
 				3EE348AE2ECA1A77008A07F6 /* DanaKit */,
 				3EE348AF2ECA1A7F008A07F6 /* MedtrumKit */,
 				3EE348B02ECA1A80008A07F6 /* FlexKit */,
+				3E0000000000000000000001 /* TandemMobiKit */,
 			);
 			name = PumpSimulatorKit;
 			packageProductDependencies = (
+				3E0000000000000000000004 /* SwiftECC */,
+				3E0000000000000000000005 /* BigInt */,
 			);
 			productName = PumpSimulatorKit;
 			productReference = 3EE347622EC96143008A07F6 /* PumpSimulatorKit.framework */;
@@ -126,6 +135,10 @@
 			);
 			mainGroup = 3EE347582EC96143008A07F6;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				3E0000000000000000000002 /* XCRemoteSwiftPackageReference "SwiftECC" */,
+				3E0000000000000000000003 /* XCRemoteSwiftPackageReference "BigInt" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3EE347632EC96143008A07F6 /* Products */;
 			projectDirPath = "";
@@ -373,6 +386,37 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+/* Begin XCRemoteSwiftPackageReference section */
+		3E0000000000000000000002 /* XCRemoteSwiftPackageReference "SwiftECC" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/leif-ibsen/SwiftECC";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 5.5.0;
+			};
+		};
+		3E0000000000000000000003 /* XCRemoteSwiftPackageReference "BigInt" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/leif-ibsen/BigInt";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		3E0000000000000000000004 /* SwiftECC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3E0000000000000000000002 /* XCRemoteSwiftPackageReference "SwiftECC" */;
+			productName = SwiftECC;
+		};
+		3E0000000000000000000005 /* BigInt */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3E0000000000000000000003 /* XCRemoteSwiftPackageReference "BigInt" */;
+			productName = BigInt;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 3EE347592EC96143008A07F6 /* Project object */;
 }

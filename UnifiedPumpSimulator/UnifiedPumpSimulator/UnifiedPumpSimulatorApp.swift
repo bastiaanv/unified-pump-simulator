@@ -31,6 +31,13 @@ struct Managers: Identifiable {
             ),
             Managers(
                 icon: "3.circle",
+                manager: TandemMobiPumpManager(
+                    rawValue: storage.getState(TandemMobiPumpManager.self) ?? [:],
+                    bluetoothManager: bluetooth
+                )
+            ),
+            Managers(
+                icon: "4.circle",
                 manager: FlexKitPumpManager(
                     rawValue: storage.getState(FlexKitPumpManager.self) ?? [:],
                     bluetoothManager: bluetooth

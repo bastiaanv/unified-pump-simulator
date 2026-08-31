@@ -34,17 +34,19 @@ struct SimulatorView: View {
                 .aspectRatio(contentMode: .fill)
                 .frame(maxWidth: 100, maxHeight: 200)
 
-            Text("Select your pump model")
-                .bold()
+            if viewModel.supportedPumpModels.count > 1 {
+                Text("Select your pump model")
+                    .bold()
 
-            Picker("", selection: $viewModel.currentPumpIndex) {
-                ForEach($viewModel.supportedPumpModels) { $item in
-                    Text($item.wrappedValue.name).tag($item.wrappedValue.index)
+                Picker("", selection: $viewModel.currentPumpIndex) {
+                    ForEach($viewModel.supportedPumpModels) { $item in
+                        Text($item.wrappedValue.name).tag($item.wrappedValue.index)
+                    }
                 }
+                .disabled(viewModel.simulatorRunning)
+                .pickerStyle(.segmented)
+                .padding(.bottom, 10)
             }
-            .disabled(viewModel.simulatorRunning)
-            .pickerStyle(.segmented)
-            .padding(.bottom, 10)
 
             if !viewModel.simulatorRunning {
                 Button(action: { viewModel.startSimulator() }) {
