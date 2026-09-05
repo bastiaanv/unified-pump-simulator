@@ -54,12 +54,48 @@ public struct PumpManagerCapabitilties {
     public let canExpire: Bool
 
     public var actions: [PumpManagerActions]
+
+    /// Continuous values a pump exposes for tinkering, rendered as sliders next to the actions
+    public var sliders: [PumpManagerSlider] = []
 }
 
 public struct PumpManagerActions: Identifiable {
     public let id = UUID()
     public let label: String
     public let action: () -> Void
+}
+
+/// A value the simulator lets you drag through a range, for the parts of a pump that are not a
+/// button press - filling a patch with insulin, say
+public struct PumpManagerSlider: Identifiable {
+    public let id = UUID()
+    public let label: String
+    public let range: ClosedRange<Double>
+    public let step: Double
+    public let unit: String
+
+    /// The value to start the slider at
+    public let get: () -> Double
+
+    /// Called when the drag ends, not while it is in flight: a pump manager reacts to this by
+    /// telling the connected app, and that should not run on every pixel of travel
+    public let set: (Double) -> Void
+
+    public init(
+        label: String,
+        range: ClosedRange<Double>,
+        step: Double,
+        unit: String,
+        get: @escaping () -> Double,
+        set: @escaping (Double) -> Void
+    ) {
+        self.label = label
+        self.range = range
+        self.step = step
+        self.unit = unit
+        self.get = get
+        self.set = set
+    }
 }
 
 public struct PumpModel: Identifiable {
