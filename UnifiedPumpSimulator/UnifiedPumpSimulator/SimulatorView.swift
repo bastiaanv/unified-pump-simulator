@@ -195,6 +195,11 @@ struct SimulatorView: View {
                 .buttonStyle(BlueButtonStyle(primaryColor: Color.blue))
                 .disabled(!viewModel.simulatorRunning)
             }
+
+            ForEach(viewModel.pumpManagerSliders) { slider in
+                PumpSliderView(slider: slider)
+                    .disabled(!viewModel.simulatorRunning)
+            }
         }
         .padding(.all, 10)
     }
@@ -234,6 +239,27 @@ struct SimulatorView: View {
         default:
             return Color.primary
         }
+    }
+}
+
+struct PumpSliderView: View {
+    let slider: PumpManagerSlider
+
+    @State private var value: Double = 0
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("\(slider.label): \(Int(value))\(slider.unit)")
+                .font(.headline)
+
+            Slider(value: $value, in: slider.range, step: slider.step) { editing in
+                if !editing {
+                    slider.set(value)
+                }
+            }
+            .frame(maxWidth: 200)
+        }
+        .onAppear { value = slider.get() }
     }
 }
 
