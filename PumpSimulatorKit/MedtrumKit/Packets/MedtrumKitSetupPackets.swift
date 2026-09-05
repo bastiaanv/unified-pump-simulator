@@ -4,17 +4,6 @@ extension MedtrumKitPackets {
     static var primeTimer: Timer?
 
     static func parsePrimePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
-        guard params.pumpManager.state.patchState.rawValue >= PatchState.filled.rawValue else {
-            bluetoothManager.writeResponse(
-                data: Data(),
-                status: .invalidState,
-                params.responseParam
-            )
-
-            logger.warning("Rejecting prime command - Current state: \(params.pumpManager.state.patchState)")
-            return
-        }
-
         params.pumpManager.state.patchState = .priming
         params.pumpManager.state.primeProgress = 1
         params.pumpManager.state.tempBasalStart = nil
