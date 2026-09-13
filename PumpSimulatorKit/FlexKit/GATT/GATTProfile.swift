@@ -22,9 +22,6 @@ public enum MiniMedGATT {
     /// Medtronic manufacturer company id `0x1010` (little-endian bytes `10 10`).
     public static let medtronicCompanyID: UInt16 = 0x1010
 
-    /// The service UUID the phone's scanner keys on (`00000100`, InsulinDeliveryService).
-    public static let insulinDeliveryService = CBUUID(string: "00000100\(primarySuffix)")
-
     // MARK: - Service A: InsulinDeliveryService (IDD)
 
     public static let iddService = CBUUID(string: "00000100\(primarySuffix)")
@@ -32,6 +29,7 @@ public enum MiniMedGATT {
     public static let iddChar0101 = CBUUID(string: "00000101\(primarySuffix)") // encrypted
     public static let iddChar0102 = CBUUID(string: "00000102\(primarySuffix)") // encrypted
     public static let iddChar0103 = CBUUID(string: "00000103\(primarySuffix)") // encrypted
+    public static let iddChar0105 = CBUUID(string: "00000105\(primarySuffix)") // encrypted
     public static let iddChar0108 = CBUUID(string: "00000108\(primarySuffix)") // encrypted
     public static let iddChar0110 = CBUUID(string: "00000110\(primarySuffix)") // encrypted
     public static let iddChar0112 = CBUUID(string: "00000112\(primarySuffix)") // encrypted

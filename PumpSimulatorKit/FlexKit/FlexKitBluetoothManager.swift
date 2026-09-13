@@ -9,9 +9,17 @@ class FlexKitBluetoothManager {
     let logger = PumpManagerLogger(subsystem: "com.bastiaanv.flexkit", category: "FlexKitBluetoothManager")
     private let pumpBluetoothManager: PumpBluetoothmanager
 
-    // Secure-link machinery (Tier A: transparent link).
-    let handshake = SecureLinkHandshake()
+    // Secure-link machinery. Defaults to the real TLS 1.3 tier; pass
+    // `-FlexKitTransparentLink` (or omit the bundled PKI) for Tier A.
+    let handshake = FlexKitBluetoothManager.makeHandshake()
     let sequencer = TLSMessageSequencer()
+
+    /// Mirrors the phone's `SecureGattClient.isActive`. The phone only applies the
+    /// 1-byte sequence framing on encrypted characteristics *after* the passkey
+    /// exchange (`BleTlsHandshake.run` → `client.activate()`). During the handshake
+    /// the same characteristics carry plain CCMP frames with no sequence prefix, so
+    /// we must not strip/insert one until this flips.
+    private(set) var secureLinkActive = false
 
     // Service / characteristic references.
     private let iddService: CBMutableService
@@ -72,6 +80,7 @@ class FlexKitBluetoothManager {
             iddChar(MiniMedGATT.iddChar0101),
             iddChar(MiniMedGATT.iddChar0102),
             iddChar(MiniMedGATT.iddChar0103),
+            iddChar(MiniMedGATT.iddChar0105),
             iddChar(MiniMedGATT.iddChar0108),
             iddChar(MiniMedGATT.iddChar0110),
             iddChar(MiniMedGATT.iddChar0112),
@@ -136,18 +145,9 @@ class FlexKitBluetoothManager {
 
         let services = [iddService, deviceTimeService, rtMtsService, nrtMtsService, connMgmService]
 
-        // Manufacturer data: company-id 0x1010 (LE) + deviceId / flags / frameType.
-        var manufacturerData = Data()
-        manufacturerData.append(0x10) // company id low (0x1010)
-        manufacturerData.append(0x10) // company id high
-        manufacturerData.append(0x00) // deviceId
-        manufacturerData.append(0x01) // flags
-        manufacturerData.append(0x00) // frameType
-
         let advertisingData: [String: Any] = [
             CBAdvertisementDataLocalNameKey: "MiniMed",
-            CBAdvertisementDataServiceUUIDsKey: [MiniMedGATT.insulinDeliveryService],
-            CBAdvertisementDataManufacturerDataKey: manufacturerData,
+            CBAdvertisementDataServiceUUIDsKey: [MiniMedGATT.iddService],
         ]
 
         pumpBluetoothManager.startAdvertising(services: services, advertisingData: advertisingData)
@@ -159,6 +159,25 @@ class FlexKitBluetoothManager {
         writeQueue.removeAll()
         handshake.reset()
         sequencer.reset()
+        secureLinkActive = false
+    }
+}
+
+// MARK: - TLS tier selection
+
+extension FlexKitBluetoothManager {
+    static func makeHandshake() -> SecureLinkHandshake {
+        let forceTransparent = ProcessInfo.processInfo.arguments.contains("-FlexKitTransparentLink")
+        let bundle = Bundle(for: FlexKitBluetoothManager.self)
+        guard !forceTransparent,
+              let certURL = bundle.url(forResource: "server-chain", withExtension: "pem"),
+              let keyURL = bundle.url(forResource: "server", withExtension: "key"),
+              let cert = try? Data(contentsOf: certURL),
+              let key = try? Data(contentsOf: keyURL)
+        else {
+            return SecureLinkHandshake(tier: .transparent)
+        }
+        return SecureLinkHandshake(tier: .tls, serverCertPEM: cert, serverKeyPEM: key)
     }
 }
 
@@ -171,11 +190,22 @@ extension FlexKitBluetoothManager {
         data: Data
     ) -> CCMPFormat0.Frame? {
         var body = data
+        let isEncrypted = MiniMedGATT.isEncrypted(characteristic.uuid)
 
-        // Encrypted characteristics carry a 1-byte sequence prefix.
-        if MiniMedGATT.isEncrypted(characteristic.uuid), !body.isEmpty {
+        // Post-activation, encrypted characteristics carry `[seq][TLS(CCMP)]`.
+        // During the handshake the same characteristics carry raw CCMP frames.
+        if secureLinkActive, isEncrypted, !body.isEmpty {
             body = body.subdata(in: 1 ..< body.count)
             sequencer.releaseCryptoLock()
+
+            if let tls = handshake.tlsSession, handshake.isTLSHandshakeComplete {
+                do {
+                    body = try tls.decrypt(body)
+                } catch {
+                    logger.warning("TLS decrypt failed: \(error)")
+                    return nil
+                }
+            }
         }
 
         // The body may be wrapped in an MTS transmit frame; if so unwrap it.
@@ -183,8 +213,15 @@ extension FlexKitBluetoothManager {
             body = ccmp
         }
 
-        guard let frame = try? CCMPFormat0.decode(body) else {
-            logger.warning("Failed to decode CCMP frame: \(body.hexString())")
+        let frame: CCMPFormat0.Frame
+        do {
+            let headerLen = min(12, body.count)
+            logger.debug(
+                "CCMP body header: \(body.subdata(in: 0 ..< headerLen).hexString()) (raw \(data.hexString()))"
+            )
+            frame = try CCMPFormat0.decode(body)
+        } catch {
+            logger.warning("Failed to decode CCMP frame: \(body.hexString()), error: \(error)")
             return nil
         }
         return frame
@@ -204,13 +241,24 @@ extension FlexKitBluetoothManager {
              CcmpMsgID.clientFinished.rawValue,
              CcmpMsgID.clientHello.rawValue,
              CcmpMsgID.passkey.rawValue:
-            let responses = (try? handshake.handle(
-                messageID: messageID,
-                payload: payload,
-                passkey: pumpManager.state.passkey
-            )) ?? []
+            let responses: [(UInt16, Data)]
+            do {
+                responses = try handshake.handle(
+                    messageID: messageID,
+                    payload: payload,
+                    passkey: pumpManager.state.passkey
+                )
+            } catch {
+                logger.error("Secure-link handshake failed: \(error)")
+                responses = []
+            }
             for (id, rspPayload) in responses {
                 sendCCMP(messageID: id, payload: rspPayload, to: data7102, peripheralManager: peripheralManager)
+            }
+            // The passkey reply is the last handshake frame and must itself be
+            // unprefixed/unencrypted; sequence framing starts with the next message.
+            if messageID == CcmpMsgID.passkey.rawValue, handshake.isEstablished {
+                secureLinkActive = true
             }
 
         // Pump-certificate get/set — stub (Tier A).
@@ -289,7 +337,8 @@ extension FlexKitBluetoothManager {
     }
 
     /// Wrap a CCMP frame in the on-wire value and enqueue it for delivery.
-    /// Encrypted characteristics are prefixed with the 1-byte sequence number.
+    /// Once the secure link is active, encrypted characteristics carry
+    /// `[seq][TLS(CCMP frame)]`.
     func sendCCMP(
         messageID: UInt16,
         payload: Data,
@@ -298,8 +347,16 @@ extension FlexKitBluetoothManager {
     ) {
         let frame = CCMPFormat0.encode(messageID: messageID, payload: payload)
         var wire = frame
-        if MiniMedGATT.isEncrypted(characteristic.uuid) {
-            wire = Data(sequencer.prefixWithSequenceNumber(Array(frame)))
+        if secureLinkActive, MiniMedGATT.isEncrypted(characteristic.uuid) {
+            if let tls = handshake.tlsSession, handshake.isTLSHandshakeComplete {
+                do {
+                    wire = try tls.encrypt(frame)
+                } catch {
+                    logger.error("TLS encrypt failed for \(String(format: "0x%04X", messageID)): \(error)")
+                    return
+                }
+            }
+            wire = Data(sequencer.prefixWithSequenceNumber(Array(wire)))
         }
         writeQueue.append((wire, characteristic))
         readyForNextMessage(peripheralManager)
@@ -318,12 +375,38 @@ extension FlexKitBluetoothManager {
             return
         }
 
-        logger.info("Writing: \(item.0.hexString()), to: \(item.1.uuid.uuidString)")
-        guard peripheral.updateValue(item.0, for: item.1, onSubscribedCentrals: centrals) else {
+        // ATT notifications cap out at each central's `maximumUpdateValueLength`.
+        // During the handshake the server flight (ServerHello + EE + Certificate +
+        // CertificateVerify + Finished) is a single large CCMP frame, so split it
+        // across notifications; FlexKit's `SecureGattClient` reassembles partial
+        // frames before decoding. Post-activation frames are `[seq][TLS(CCMP)]`
+        // and the client expects each notification to be a complete frame, so they
+        // must not be split here (large payloads need GattStream — tracked gap).
+        let maxLength = max(20, centrals.map(\.maximumUpdateValueLength).min() ?? 512)
+        let chunk: Data
+        let remainder: Data
+        if !secureLinkActive, item.0.count > maxLength {
+            chunk = item.0.prefix(maxLength)
+            remainder = Data(item.0.dropFirst(chunk.count))
+        } else {
+            chunk = item.0
+            remainder = Data()
+            if secureLinkActive, item.0.count > maxLength {
+                logger.warning(
+                    "Encrypted frame \(item.0.count) > MTU \(maxLength) post-activation; needs GattStream segmentation"
+                )
+            }
+        }
+
+        logger.info("Writing: \(chunk.hexString()) (\(chunk.count)/\(item.0.count) bytes), to: \(item.1.uuid.uuidString)")
+        guard peripheral.updateValue(chunk, for: item.1, onSubscribedCentrals: centrals) else {
             return
         }
 
         writeQueue.removeFirst()
+        if !remainder.isEmpty {
+            writeQueue.insert((remainder, item.1), at: 0)
+        }
         readyForNextMessage(peripheral)
     }
 }

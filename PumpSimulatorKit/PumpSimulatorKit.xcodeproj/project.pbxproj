@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		3E27702E3045F42600D332D2 /* SwiftECC in Frameworks */ = {isa = PBXBuildFile; productRef = 3E0000000000000000000004 /* SwiftECC */; };
 		3E27702F3045F42600D332D2 /* BigInt in Frameworks */ = {isa = PBXBuildFile; productRef = 3E0000000000000000000005 /* BigInt */; };
+		3E2770303045F42600D332D2 /* CMbedTLS in Frameworks */ = {isa = PBXBuildFile; productRef = 3E0000000000000000000007 /* CMbedTLS */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -48,6 +49,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				3E2770303045F42600D332D2 /* CMbedTLS in Frameworks */,
 				3E27702F3045F42600D332D2 /* BigInt in Frameworks */,
 				3E27702E3045F42600D332D2 /* SwiftECC in Frameworks */,
 			);
@@ -113,6 +115,7 @@
 			packageProductDependencies = (
 				3E0000000000000000000004 /* SwiftECC */,
 				3E0000000000000000000005 /* BigInt */,
+				3E0000000000000000000007 /* CMbedTLS */,
 			);
 			productName = PumpSimulatorKit;
 			productReference = 3EE347622EC96143008A07F6 /* PumpSimulatorKit.framework */;
@@ -145,6 +148,7 @@
 			packageReferences = (
 				3E0000000000000000000002 /* XCRemoteSwiftPackageReference "SwiftECC" */,
 				3E0000000000000000000003 /* XCRemoteSwiftPackageReference "BigInt" */,
+				3E0000000000000000000006 /* XCRemoteSwiftPackageReference "CMbedTLS" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 3EE347632EC96143008A07F6 /* Products */;
@@ -411,6 +415,14 @@
 				minimumVersion = 1.0.0;
 			};
 		};
+		3E0000000000000000000006 /* XCRemoteSwiftPackageReference "CMbedTLS" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/bastiaanv/CMbedTLS";
+			requirement = {
+				kind = revision;
+				revision = 561ca758742c29b15096f6ac6d6a9990c3fb31fa;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -423,6 +435,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 3E0000000000000000000003 /* XCRemoteSwiftPackageReference "BigInt" */;
 			productName = BigInt;
+		};
+		3E0000000000000000000007 /* CMbedTLS */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 3E0000000000000000000006 /* XCRemoteSwiftPackageReference "CMbedTLS" */;
+			productName = CMbedTLS;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

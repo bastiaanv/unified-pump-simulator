@@ -38,11 +38,13 @@ enum CcmpMsgID: UInt16 {
 
 /// CCMP format-0 wire encoder/decoder (`packets/01 §1`).
 ///
-/// Canonical wire layout (LITTLE-ENDIAN — ground truth from `packets/00_README`):
+/// Canonical wire layout (BIG-ENDIAN — matches the reference decompilation
+/// `CCMPProtocol.swift`; the earlier little-endian reading was wrong for the
+/// message-id and payload-length fields):
 /// ```
 /// [0]      format        uint8       = 0
-/// [1..2]   messageId     uint16  LE
-/// [3..6]   payloadLength uint32  LE
+/// [1..2]   messageId     uint16  BE
+/// [3..6]   payloadLength uint32  BE
 /// [7]      noncePresence uint8       (bit1 → 16B senderNonce, bit0 → 16B recipientNonce)
 /// [8..]    nonces        (per flag)
 /// [...]    data          payloadLength bytes
@@ -57,8 +59,13 @@ enum CCMPFormat0 {
     static func encode(messageID: UInt16, payload: Data, senderNonce: [UInt8] = []) -> Data {
         var out = Data()
         out.append(0) // format = 0
-        out.append(messageID.miniMedData()) // id LE
-        out.append(UInt32(payload.count).miniMedData()) // length LE
+        out.append(UInt8((messageID >> 8) & 0xFF)) // id BE
+        out.append(UInt8(messageID & 0xFF))
+        let len = UInt32(payload.count)
+        out.append(UInt8((len >> 24) & 0xFF)) // length BE
+        out.append(UInt8((len >> 16) & 0xFF))
+        out.append(UInt8((len >> 8) & 0xFF))
+        out.append(UInt8(len & 0xFF))
         let presence: UInt8 = senderNonce.isEmpty ? 0 : 0x02
         out.append(presence)
         if !senderNonce.isEmpty {
@@ -77,8 +84,10 @@ enum CCMPFormat0 {
         guard format == 0 else {
             throw MiniMedError.protocolError("expected format-0, got \(format)")
         }
-        let messageID = data.miniMedUInt16(1)
-        let payloadLength = Int(data.miniMedUInt32(3))
+        // Big-endian (reference `CCMPProtocol.swift`).
+        let messageID = (UInt16(data[1]) << 8) | UInt16(data[2])
+        let payloadLength =
+            (Int(data[3]) << 24) | (Int(data[4]) << 16) | (Int(data[5]) << 8) | Int(data[6])
         let presence = data[7]
 
         var cursor = 8
