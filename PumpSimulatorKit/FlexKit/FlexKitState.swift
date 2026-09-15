@@ -32,6 +32,13 @@ struct BgTargetRow: Codable, Identifiable {
     var c: UInt16
 }
 
+/// One entry in the SRCP alert stack (`getAlertStack`). Each element is
+/// `{id u16}{stateFlags u8}` on the wire.
+struct FlexAlert: Codable, Identifiable {
+    var id: UInt16
+    var stateFlags: UInt8
+}
+
 /// A configured basal pattern. Each segment is `{duration u16}{rate u32 mU}` (`packets/03 §2.2`).
 struct BasalPattern: Codable {
     var id: UInt8
@@ -68,6 +75,8 @@ class FlexKitState {
         maxBolus = rawValue["maxBolus"] as? Double ?? 25.0
         maxBasal = rawValue["maxBasal"] as? Double ?? 10.0
         activeInsulinTime = rawValue["activeInsulinTime"] as? TimeInterval ?? .hours(4)
+        insulinOnBoardUnits = rawValue["insulinOnBoardUnits"] as? Double ?? 0.0
+        alertStack = Self.decodeArray(rawValue["alertStack"], type: [FlexAlert].self) ?? []
 
         basal = Self.decodeArray(rawValue["basal"], type: [BasalItem].self) ?? []
         historyRecords = Self.decodeArray(rawValue["historyRecords"], type: [HistoryRecord].self) ?? []
@@ -106,6 +115,10 @@ class FlexKitState {
         state["maxBolus"] = maxBolus
         state["maxBasal"] = maxBasal
         state["activeInsulinTime"] = activeInsulinTime
+        state["insulinOnBoardUnits"] = insulinOnBoardUnits
+        if let data = Self.encodeArray(alertStack) {
+            state["alertStack"] = data
+        }
         if let data = Self.encodeArray(basal) {
             state["basal"] = data
         }
@@ -158,6 +171,10 @@ class FlexKitState {
     var bgTarget: [BgTargetRow]
     var activeInsulinTime: TimeInterval
     var basalPatterns: [BasalPattern]
+
+    /// SRCP status fields: IOB (units) and alert stack (`getAlertStack`).
+    var insulinOnBoardUnits: Double
+    var alertStack: [FlexAlert]
 
     // Bolt-on counters for RACP/SRCP + history.
     var historyRecords: [HistoryRecord]

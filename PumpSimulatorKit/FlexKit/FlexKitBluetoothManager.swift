@@ -14,6 +14,16 @@ class FlexKitBluetoothManager {
     let handshake = FlexKitBluetoothManager.makeHandshake()
     let sequencer = TLSMessageSequencer()
 
+    // MARK: - TEMPORARY (revert me)
+
+    // Disables the secure-link handshake and TLS message encryption/decryption.
+    // With this `true`:
+    //   * no handshake responses are sent, so the secure link never activates
+    //   * inbound writes are treated as raw plaintext CCMP (no seq strip, no TLS decrypt)
+    //   * outbound frames are written as raw plaintext CCMP (no TLS encrypt, no seq prefix)
+    // Must be paired with a non-TLS test client. Set back to `false` to re-enable Tier B.
+    private let temporarilyDisableSecureLink = true
+
     /// Mirrors the phone's `SecureGattClient.isActive`. The phone only applies the
     /// 1-byte sequence framing on encrypted characteristics *after* the passkey
     /// exchange (`BleTlsHandshake.run` → `client.activate()`). During the handshake
@@ -194,7 +204,8 @@ extension FlexKitBluetoothManager {
 
         // Post-activation, encrypted characteristics carry `[seq][TLS(CCMP)]`.
         // During the handshake the same characteristics carry raw CCMP frames.
-        if secureLinkActive, isEncrypted, !body.isEmpty {
+        // TEMPORARY: `!temporarilyDisableSecureLink` skips seq-strip + TLS decrypt.
+        if secureLinkActive, isEncrypted, !body.isEmpty, !temporarilyDisableSecureLink {
             body = body.subdata(in: 1 ..< body.count)
             sequencer.releaseCryptoLock()
 
@@ -237,10 +248,15 @@ extension FlexKitBluetoothManager {
 
         switch messageID {
         // Secure-link handshake / passkey.
+        // TEMPORARY: secure link disabled -> treat handshake messages as no-ops.
         case CcmpMsgID.authError.rawValue,
              CcmpMsgID.clientFinished.rawValue,
              CcmpMsgID.clientHello.rawValue,
              CcmpMsgID.passkey.rawValue:
+            if temporarilyDisableSecureLink {
+                logger.info("TEMPORARY: ignoring secure-link handshake msg \(String(format: "0x%04X", messageID))")
+                break
+            }
             let responses: [(UInt16, Data)]
             do {
                 responses = try handshake.handle(
@@ -347,7 +363,8 @@ extension FlexKitBluetoothManager {
     ) {
         let frame = CCMPFormat0.encode(messageID: messageID, payload: payload)
         var wire = frame
-        if secureLinkActive, MiniMedGATT.isEncrypted(characteristic.uuid) {
+        // TEMPORARY: `!temporarilyDisableSecureLink` skips TLS encrypt + seq prefix.
+        if secureLinkActive, MiniMedGATT.isEncrypted(characteristic.uuid), !temporarilyDisableSecureLink {
             if let tls = handshake.tlsSession, handshake.isTLSHandshakeComplete {
                 do {
                     wire = try tls.encrypt(frame)
@@ -375,38 +392,12 @@ extension FlexKitBluetoothManager {
             return
         }
 
-        // ATT notifications cap out at each central's `maximumUpdateValueLength`.
-        // During the handshake the server flight (ServerHello + EE + Certificate +
-        // CertificateVerify + Finished) is a single large CCMP frame, so split it
-        // across notifications; FlexKit's `SecureGattClient` reassembles partial
-        // frames before decoding. Post-activation frames are `[seq][TLS(CCMP)]`
-        // and the client expects each notification to be a complete frame, so they
-        // must not be split here (large payloads need GattStream — tracked gap).
-        let maxLength = max(20, centrals.map(\.maximumUpdateValueLength).min() ?? 512)
-        let chunk: Data
-        let remainder: Data
-        if !secureLinkActive, item.0.count > maxLength {
-            chunk = item.0.prefix(maxLength)
-            remainder = Data(item.0.dropFirst(chunk.count))
-        } else {
-            chunk = item.0
-            remainder = Data()
-            if secureLinkActive, item.0.count > maxLength {
-                logger.warning(
-                    "Encrypted frame \(item.0.count) > MTU \(maxLength) post-activation; needs GattStream segmentation"
-                )
-            }
-        }
-
-        logger.info("Writing: \(chunk.hexString()) (\(chunk.count)/\(item.0.count) bytes), to: \(item.1.uuid.uuidString)")
-        guard peripheral.updateValue(chunk, for: item.1, onSubscribedCentrals: centrals) else {
+        logger.info("Writing: \(item.0.hexString()), to: \(item.1.uuid.uuidString)")
+        guard peripheral.updateValue(item.0, for: item.1, onSubscribedCentrals: centrals) else {
             return
         }
 
         writeQueue.removeFirst()
-        if !remainder.isEmpty {
-            writeQueue.insert((remainder, item.1), at: 0)
-        }
         readyForNextMessage(peripheral)
     }
 }

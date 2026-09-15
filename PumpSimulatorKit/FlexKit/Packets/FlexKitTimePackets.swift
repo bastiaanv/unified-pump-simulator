@@ -14,14 +14,22 @@ enum FlexKitTimePackets {
 
     static func process(_ payload: Data, _ params: FlexKitBluetoothManager.PacketParams) -> Bool {
         let op = payload.first
-        // Time-update proposal (`2`) / force (`3`).
-        if op == 2 || op == 3 {
+
+        // Time-update proposal (`2`) / force (`3`). The request is structurally
+        // 13 bytes: `[op:1][flags:2][baseTime:4][offset:1][tz:5]`. We must not
+        // sniff the first byte alone, because an SRCP status getter is a 2-byte
+        // `[opcode u16 LE]` whose low byte collides with these op codes — e.g.
+        // `basalRateDelivery` = 2 → `02 00`. Requiring the full length keeps a
+        // getter from being misread as a device-time update.
+        if op == 2 || op == 3, payload.count >= 13 {
             applyTimeUpdate(payload, params)
             return true
         }
 
         // Otherwise treat as a device-time read and return the 17-byte response.
-        if op == nil || op == 1 {
+        // A read request is a single opcode byte (`1`) or empty; a 2-byte body
+        // is an SRCP getter (opcode 1 = getAlgorithmProgress), not a read.
+        if payload.count <= 1, op == nil || op == 1 {
             sendReadResponse(params)
             return true
         }

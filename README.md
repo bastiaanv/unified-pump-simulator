@@ -4,6 +4,8 @@ The MacOS unified pump manager
 ## Supported pumps
 - Dana-i & DanaRS firmware 3 -> [DanaKit](https://github.com/bastiaanv/DanaKit)
 - Medtrum (200u & 300u) -> [MedtrumKit](https://github.com/jbr7rr/MedtrumKit)
+- Tandem Mobi -> [TandemKit](https://github.com/jwoglom/TandemKit)
+- MiniMed Flex -> [FlexKit](https://github.com/bastiaanv/FlexKit)
 
 ## How to get started
 
