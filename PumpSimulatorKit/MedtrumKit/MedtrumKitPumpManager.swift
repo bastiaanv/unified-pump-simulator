@@ -120,6 +120,26 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
             )
         )
 
+        for patchState in [PatchState.none, .idle, .filled] {
+            capabilities.actions.append(
+                PumpManagerActions(label: "Set patch: \(patchState.title)") { [weak self] in
+                    self?.setPatchState(patchState)
+                }
+            )
+        }
+
+        capabilities.sliders.append(
+            PumpManagerSlider(
+                label: "Fill patch",
+                // The 300U patch is the larger of the two models, so the range covers both
+                range: 0 ... 300,
+                step: 5,
+                unit: "U",
+                get: { [weak self] in self?.state.reservoirLevel ?? 0 },
+                set: { [weak self] in self?.fillPatch(to: $0) }
+            )
+        )
+
         bluetooth.pumpManagerDelegate = self
     }
 
@@ -157,6 +177,43 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
     private func triggerOcclussion() {
         state.patchState = .occlusion
         notifyStateDidUpdate()
+
+        MedtrumKitPackets.synchronizeTimer?.fire()
+    }
+
+    private static let minimumFill: Double = 70
+
+    private func fillPatch(to level: Double) {
+        guard state.patchState.rawValue < PatchState.priming.rawValue else {
+            logger.warning("Refusing to fill a patch which is past priming: \(state.patchState)")
+            return
+        }
+
+        state.reservoirLevel = level
+
+        if level >= Self.minimumFill, state.patchState != .filled {
+            state.patchState = .filled
+        } else if level < Self.minimumFill, state.patchState == .filled {
+            state.patchState = .idle
+        }
+
+        notifyStateDidUpdate()
+
+        logger.info("Patch filled to \(level)U, state: \(state.patchState)")
+
+        MedtrumKitPackets.synchronizeTimer?.fire()
+    }
+
+    private func setPatchState(_ patchState: PatchState) {
+        state.patchState = patchState
+
+        MedtrumKitPackets.primeTimer?.invalidate()
+        MedtrumKitPackets.primeTimer = nil
+        state.primeProgress = nil
+
+        notifyStateDidUpdate()
+
+        logger.info("Patch state set to \(patchState)")
 
         MedtrumKitPackets.synchronizeTimer?.fire()
     }

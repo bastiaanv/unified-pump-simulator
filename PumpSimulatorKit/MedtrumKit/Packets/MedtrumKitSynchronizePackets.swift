@@ -100,10 +100,8 @@ extension MedtrumKitPackets {
             data.append(state.primeProgress ?? 0)
         }
 
-        if state.patchState.rawValue >= PatchState.active.rawValue {
-            fieldFlags |= Self.MASK_RESERVOIR
-            data.append(UInt16(state.reservoirLevel / 0.05).toData())
-        }
+        fieldFlags |= Self.MASK_RESERVOIR
+        data.append(UInt16(state.reservoirLevel / 0.05).toData())
 
         if state.patchState.rawValue >= PatchState.active.rawValue,
            let activatedAt = state.activatedAt, longVersion
