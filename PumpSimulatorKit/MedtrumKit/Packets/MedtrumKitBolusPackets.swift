@@ -74,7 +74,7 @@ extension MedtrumKitPackets {
         pumpManager.notifyStateDidUpdate()
 
         DispatchQueue.main.async {
-            bolusTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
+            bolusTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { _ in
                 let progressPercentage = Date.now.timeIntervalSince(startTime) / endTime.timeIntervalSince(startTime)
                 let progress = roundToSupportedBolusVolume(amount * progressPercentage)
 

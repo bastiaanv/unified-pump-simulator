@@ -56,7 +56,7 @@ extension MedtrumKitPackets {
     }
 
     static func parseResumePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
-        guard params.pumpManager.state.patchState == .suspended else {
+        guard params.pumpManager.state.patchState.isSuspended else {
             logger.warning("Attempted resume during non-suspend state...")
             bluetoothManager.writeResponse(
                 data: Data(),

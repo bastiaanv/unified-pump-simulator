@@ -120,6 +120,13 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
             )
         )
 
+        capabilities.actions.append(
+            PumpManagerActions(
+                label: "Trigger maxHour suspend",
+                action: triggerMaxHourSuspend
+            )
+        )
+
         for patchState in [PatchState.none, .idle, .filled] {
             capabilities.actions.append(
                 PumpManagerActions(label: "Set patch: \(patchState.title)") { [weak self] in
@@ -176,6 +183,13 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
 
     private func triggerOcclussion() {
         state.patchState = .occlusion
+        notifyStateDidUpdate()
+
+        MedtrumKitPackets.synchronizeTimer?.fire()
+    }
+
+    private func triggerMaxHourSuspend() {
+        state.patchState = .hourlyMaxSuspended
         notifyStateDidUpdate()
 
         MedtrumKitPackets.synchronizeTimer?.fire()

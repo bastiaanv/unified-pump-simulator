@@ -178,4 +178,18 @@ public enum PatchState: UInt8, Codable {
         case .stopped: return "Stopped"
         }
     }
+
+    var isSuspended: Bool {
+        switch self {
+        case .autoSuspended,
+             .dailyMaxSuspended,
+             .hourlyMaxSuspended,
+             .lowBgSuspended,
+             .lowBgSuspended2,
+             .suspended:
+            return true
+        default:
+            return false
+        }
+    }
 }
