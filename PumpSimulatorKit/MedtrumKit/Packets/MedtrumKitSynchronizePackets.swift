@@ -1,7 +1,18 @@
 import Foundation
 
 extension MedtrumKitPackets {
-    static var synchronizeTimer: Timer?
+    /// The 30 s heartbeat, on the pump manager's queue
+    static var synchronizeTimer: DispatchSourceTimer?
+
+    /// Sends a status update to the subscribed phone - nil while none is
+    private static var sendStatus: ((CompletedBolus?) -> Void)?
+
+    /// A bolus that just ended, which the next notification tells of once
+    struct CompletedBolus {
+        /// 0 delivered in full, 32 cancelled, 9 cut by a halt
+        let cause: UInt8
+        let delivered: Double
+    }
 
     static func parseSynchronizePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
         bluetoothManager.writeResponse(
@@ -13,30 +24,45 @@ extension MedtrumKitPackets {
     }
 
     static func scheduleUpdates(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
-        if let synchronizeTimer {
-            synchronizeTimer.invalidate()
-            Self.synchronizeTimer = nil
+        synchronizeTimer?.cancel()
+
+        sendStatus = { completedBolus in
+            params.pumpManager.advanceDelivery()
+            bluetoothManager.writeResponse(
+                data: generateSynchronizePacket(state: params.pumpManager.state, completedBolus: completedBolus),
+                status: .stateUpdate,
+                params.updateParam
+            )
         }
 
-        DispatchQueue.main.async {
-            synchronizeTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { _ in
-                bluetoothManager.writeResponse(
-                    data: generateSynchronizePacket(state: params.pumpManager.state),
-                    status: .stateUpdate,
-                    params.updateParam
-                )
-
-                logger.info("State update send!")
-            }
+        synchronizeTimer = repeatingTimer(on: params.pumpManager.queue, every: 30.0) {
+            sendStatus?(nil)
+            logger.info("State update send!")
         }
+    }
+
+    /// A notification now, rather than at the next heartbeat - carrying the completion of a bolus that just ended
+    static func sendStatusUpdate(completedBolus: CompletedBolus? = nil) {
+        sendStatus?(completedBolus)
     }
 
     static func unscheduleUpdates() {
-        synchronizeTimer?.invalidate()
+        synchronizeTimer?.cancel()
         synchronizeTimer = nil
+        sendStatus = nil
     }
 
-    static func generateSynchronizePacket(state: MedtrumKitState, longVersion: Bool = false) -> Data {
+    /// A status: the answer to Synchronize (`longVersion`), or a notification.
+    ///
+    /// As real patches send them: a notification carries the bolus field only while a bolus runs, and once as it ends
+    /// (`completedBolus`); a full status always does while active, repeating the last bolus's completion between
+    /// boluses. The basal field is there only while a basal segment runs - not while suspended or halted. The storage
+    /// field names the newest record whenever the patch is past setup.
+    static func generateSynchronizePacket(
+        state: MedtrumKitState,
+        longVersion: Bool = false,
+        completedBolus: CompletedBolus? = nil
+    ) -> Data {
         var fieldFlags: UInt16 = 0
         var data = Data([])
 
@@ -45,52 +71,30 @@ extension MedtrumKitPackets {
             data.append(suspendedSince.toMedtrumSeconds())
         }
 
-        if state.patchState == .active, let bolusProgress = state.bolusProgress, let bolusTotal = state.bolusTotal {
+        if let completedBolus {
             fieldFlags |= Self.MASK_NORMAL_BOLUS
-
-            let bolusType = 0x00
-            let bolusCompleted = bolusProgress >= bolusTotal
-
-            var bolusData = Data([UInt8(bolusType & 0x7F | (bolusCompleted ? 0x80 : 0x00))])
-            bolusData.append(UInt16(bolusProgress / 0.05).toData())
-
-            data.append(bolusData)
-        } else {
+            data.append(bolusField(type: completedBolus.cause, completed: true, delivered: completedBolus.delivered))
+        } else if state.isDeliveringBasal, state.isBolusRunning {
             fieldFlags |= Self.MASK_NORMAL_BOLUS
-
-            var bolusData = Data([0x80])
-            bolusData.append(UInt16(0).toData())
-
-            data.append(bolusData)
+            data.append(bolusField(type: 0, completed: false, delivered: state.bolusProgress ?? 0))
+        } else if longVersion, state.isDeliveringBasal {
+            fieldFlags |= Self.MASK_NORMAL_BOLUS
+            data.append(bolusField(type: state.lastBolusCause, completed: true, delivered: state.lastBolusDelivered))
         }
 
         // Extended bolus not support via sim
 
-        if state.patchState == .active || state.patchState == .suspended {
+        if state.isDeliveringBasal {
             fieldFlags |= Self.MASK_BASAL
 
-            var basalData = Data([
-                BasalType.NONE.rawValue,
-                0x00,
-                0x00, // Sequence
-            ])
-            basalData.append(UInt16(state.patchId).toData())
+            let rateSteps = UInt64(min(0xFFF, (state.segmentRate / 0.05).rounded()))
+            let deliveredSteps = UInt64(min(0xFFF, (state.segmentDelivered(until: .now) / 0.05).rounded()))
 
-            if let tempBasalRate = state.tempBasalRate, let tempBasalStart = state.tempBasalStart {
-                basalData[0] = BasalType.ABSOLUTE_TEMP.rawValue
-                basalData.append(tempBasalStart.toMedtrumSeconds())
-                basalData.append(UInt64(tempBasalRate / 0.05).toData(length: 3))
-
-            } else if let suspendedSince = state.suspendedSince {
-                basalData[0] = BasalType.SUSPEND_MANUAL.rawValue
-                basalData.append(suspendedSince.toMedtrumSeconds())
-                basalData.append(UInt64(0).toData(length: 3))
-
-            } else {
-                basalData[0] = BasalType.STANDARD.rawValue
-                basalData.append(state.basalSince.toMedtrumSeconds())
-                basalData.append(UInt64(state.currentBaseBasalRate / 0.05).toData(length: 3))
-            }
+            var basalData = Data([state.segmentType.rawValue])
+            basalData.append(state.basalSequence.toData())
+            basalData.append(UInt16(truncatingIfNeeded: state.patchId).toData())
+            basalData.append(state.basalSince.toMedtrumSeconds())
+            basalData.append((deliveredSteps << 12 | rateSteps).toData(length: 3))
 
             data.append(basalData)
         }
@@ -115,10 +119,12 @@ extension MedtrumKitPackets {
 
             let value = UInt64(state.voltageA * 512) + UInt64(state.voltageB * 512) << 12
             data.append(value.toData(length: 3))
+        }
 
+        if state.patchState.rawValue >= PatchState.active.rawValue {
             fieldFlags |= Self.MASK_STORAGE
-            data.append(state.patchSequence.toData())
-            data.append(UInt16(state.patchId).toData())
+            data.append(state.recordLog.newestWritten.toData())
+            data.append(UInt16(truncatingIfNeeded: state.patchId).toData())
         }
 
         if state.patchState == .hourlyMaxSuspended || state.patchState == .dailyMaxSuspended {
@@ -145,6 +151,13 @@ extension MedtrumKitPackets {
         }
 
         return output
+    }
+
+    /// Type (the completion cause) in the low 7 bits, completed in the high one, then the amount delivered so far
+    private static func bolusField(type: UInt8, completed: Bool, delivered: Double) -> Data {
+        var bolusData = Data([type & 0x7F | (completed ? 0x80 : 0x00)])
+        bolusData.append(UInt16(max(0, (delivered / 0.05).rounded())).toData())
+        return bolusData
     }
 
     private static let MASK_SUSPEND: UInt16 = 0x01

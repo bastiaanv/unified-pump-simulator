@@ -17,6 +17,24 @@ class MedtrumKitState {
         expirationTimer = rawValue["expirationTimer"] as? UInt8 ?? 1
         hourlyMaxInsulin = rawValue["hourlyMaxInsulin"] as? UInt16 ?? 20
         dailyMaxInsulin = rawValue["dailyMaxInsulin"] as? UInt16 ?? 180
+        patchId = rawValue["patchId"] as? UInt32 ?? 192
+        basalSequence = rawValue["basalSequence"] as? UInt16 ?? 0
+        bolusAnsweredNumber = rawValue["bolusAnsweredNumber"] as? UInt16 ?? rawValue["bolusRecordNumber"] as? UInt16
+        bolusStart = rawValue["bolusStart"] as? Date
+        lastBolusDelivered = rawValue["lastBolusDelivered"] as? Double ?? 0
+        lastBolusCause = rawValue["lastBolusCause"] as? UInt8 ?? 0
+        dayStart = rawValue["dayStart"] as? Date
+        dayBolus = rawValue["dayBolus"] as? Double ?? 0
+        dayBasal = rawValue["dayBasal"] as? Double ?? 0
+        timeZoneOffset = rawValue["timeZoneOffset"] as? Int
+
+        if let rawRecordLog = rawValue["recordLog"] as? Data,
+           let decoded = try? JSONDecoder().decode(MedtrumKitRecordLog.self, from: rawRecordLog)
+        {
+            _recordLog = decoded
+        } else {
+            _recordLog = MedtrumKitRecordLog()
+        }
 
         if let rawBasal = rawValue["basal"] as? Data {
             do {
@@ -60,6 +78,17 @@ class MedtrumKitState {
         state["alarmSettings"] = alarmSettings.rawValue
         state["hourlyMaxInsulin"] = hourlyMaxInsulin
         state["dailyMaxInsulin"] = dailyMaxInsulin
+        state["patchId"] = patchId
+        state["basalSequence"] = basalSequence
+        state["bolusAnsweredNumber"] = bolusAnsweredNumber
+        state["bolusStart"] = bolusStart
+        state["lastBolusDelivered"] = lastBolusDelivered
+        state["lastBolusCause"] = lastBolusCause
+        state["dayStart"] = dayStart
+        state["dayBolus"] = dayBolus
+        state["dayBasal"] = dayBasal
+        state["timeZoneOffset"] = timeZoneOffset
+        state["recordLog"] = try? JSONEncoder().encode(recordLog)
 
         do {
             state["basal"] = try JSONEncoder().encode(basal)
@@ -70,9 +99,31 @@ class MedtrumKitState {
 
     var currentModelIndex: Int
 
-    var patchId: UInt32 = 192
-    var patchSequence: UInt16 = 0
+    /// Goes up by one with every patch activated, as on real patches. Kept below 0x10000: records and statuses carry
+    /// only its low two bytes.
+    var patchId: UInt32
     var patchState: PatchState
+
+    /// The patch's event log - see `MedtrumKitDelivery.swift` for what writes to it. Written on the pump manager's
+    /// queue only, read by the UI too: behind a lock, each change made in one go (`updateRecordLog`).
+    var recordLog: MedtrumKitRecordLog {
+        recordLogLock.withLock { _recordLog }
+    }
+
+    @discardableResult func updateRecordLog<Result>(_ change: (inout MedtrumKitRecordLog) -> Result) -> Result {
+        recordLogLock.withLock { change(&_recordLog) }
+    }
+
+    private var _recordLog: MedtrumKitRecordLog
+    private let recordLogLock = NSLock()
+    /// The record number a status's basal field and a command's answer carry for the running basal segment: the newest
+    /// record as it started - the record of the segment it replaced
+    var basalSequence: UInt16
+
+    /// The base's serial number, as records carry it
+    var serialNumber: UInt32 {
+        currentModelIndex == 0 ? 0x4A12_D828 : 0x52DF_1614
+    }
 
     var activatedAt: Date?
     var expiresAt: Date? {
@@ -95,6 +146,30 @@ class MedtrumKitState {
 
     var bolusProgress: Double?
     var bolusTotal: Double?
+    /// When the running bolus started - nil while none runs
+    var bolusStart: Date?
+    /// The record number the SetBolus answer named: the next one then. The bolus is written under the next number
+    /// as it ends - this one, or a later one if the patch wrote other records meanwhile.
+    var bolusAnsweredNumber: UInt16?
+    /// A full status repeats the last bolus's completion
+    var lastBolusDelivered: Double
+    var lastBolusCause: UInt8
+
+    /// The day the totals of the next TDD record are counted for (the patch's midnight), and those totals
+    var dayStart: Date?
+    var dayBolus: Double
+    var dayBasal: Double
+
+    /// The patch's offset from UTC in minutes, as the phone set it (SetTimeZone): its midnight and the blocks of its
+    /// schedule follow it. Until the phone sets one, the Mac's.
+    var timeZoneOffset: Int?
+
+    /// The patch's calendar: the zone the phone set
+    var calendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = timeZoneOffset.flatMap { TimeZone(secondsFromGMT: $0 * 60) } ?? .current
+        return calendar
+    }
 
     var primeProgress: UInt8?
 
@@ -108,16 +183,19 @@ class MedtrumKitState {
     var dailyMaxInsulin: UInt16 = 180
 
     var currentBaseBasalRate: Double {
+        scheduledRate(at: Date())
+    }
+
+    func scheduledRate(at date: Date) -> Double {
         guard !basal.isEmpty else {
             // Prevent crash if basalSchedule isnt set
             return 0
         }
 
-        let now = Date()
-        let startOfDay = Calendar.current.startOfDay(for: now)
-        let nowTimeInterval = now.timeIntervalSince(startOfDay)
+        let startOfDay = calendar.startOfDay(for: date)
+        let timeInterval = date.timeIntervalSince(startOfDay)
 
-        let index = (basal.firstIndex(where: { $0.start > nowTimeInterval }) ?? basal.count) - 1
+        let index = (basal.firstIndex(where: { $0.start > timeInterval }) ?? basal.count) - 1
         return basal.indices.contains(index) ? basal[index].rate : basal[0].rate
     }
 }

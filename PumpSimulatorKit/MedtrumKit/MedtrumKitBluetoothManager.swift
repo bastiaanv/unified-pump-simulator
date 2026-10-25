@@ -3,7 +3,7 @@ import CoreBluetooth
 class MedtrumKitBluetoothManager {
     var pumpManagerDelegate: MedtrumKitPumpManager?
     let logger = PumpManagerLogger(subsystem: "com.bastiaanv.medtrumkit", category: "MedtrumKitBluetoothManager")
-    private let pumpBluetoothManager: PumpBluetoothmanager
+    let pumpBluetoothManager: PumpBluetoothmanager
 
     private let SERVICE_UUID = CBUUID(string: "669A9001-0008-968F-E311-6050405558B3")
     private let SUBSCRIPTION_CHAR_UUID = CBUUID(string: "669a9120-0008-968f-e311-6050405558b3")
@@ -97,6 +97,7 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
         }
 
         logger.info("Received message: \(buffer.hexString())")
+        let command = buffer[1]
         let param = MedtrumKitPackets.MedtrumKitPacketRequest(
             data: buffer,
             pumpManager: pumpManager,
@@ -114,7 +115,17 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
             )
         )
 
-        switch data[1] {
+        // Temp basals and suspends that ran out, midnights passed: before the command acts on them
+        pumpManager.advanceDelivery()
+
+        dispatch(command, param)
+
+        peripheralManager.respond(to: request, withResult: .success)
+        buffer = Data()
+    }
+
+    private func dispatch(_ command: UInt8, _ param: MedtrumKitPackets.MedtrumKitPacketRequest) {
+        switch command {
         case CommandType.SYNCHRONIZE:
             MedtrumKitPackets.parseSynchronizePacket(param, self)
         case CommandType.AUTH_REQ:
@@ -149,12 +160,11 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
             MedtrumKitPackets.startBolus(param, self)
         case CommandType.CANCEL_BOLUS:
             MedtrumKitPackets.stopBolus(param, self)
+        case CommandType.GET_RECORD:
+            MedtrumKitPackets.parseGetRecordPacket(param, self)
         default:
-            logger.warning("Received unknown command: \(buffer[1])")
+            logger.warning("Received unknown command: \(command)")
         }
-
-        peripheralManager.respond(to: request, withResult: .success)
-        buffer = Data()
     }
 
     func readyForNextMessage(_ peripheral: CBPeripheralManager) {
@@ -168,6 +178,9 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
         }
 
         logger.info("Writing: \(item.0.hexString()), to: \(item.1.uuid.uuidString)")
+        if let shortest = centrals.map(\.maximumUpdateValueLength).min(), item.0.count > shortest {
+            logger.warning("Writing \(item.0.count) bytes, more than the central takes at once (\(shortest))")
+        }
         guard peripheral.updateValue(item.0, for: item.1, onSubscribedCentrals: centrals) else {
             return
         }

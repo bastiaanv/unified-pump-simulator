@@ -1,7 +1,8 @@
 import Foundation
 
 extension MedtrumKitPackets {
-    static var primeTimer: Timer?
+    /// Priming's progress, on the pump manager's queue
+    static var primeTimer: DispatchSourceTimer?
 
     static func parsePrimePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
         params.pumpManager.state.patchState = .priming
@@ -36,21 +37,24 @@ extension MedtrumKitPackets {
         params.pumpManager.state.alarmSettings = AlarmSettings(rawValue: params.data[7]) ?? .None
         params.pumpManager.state.hourlyMaxInsulin = params.data.toUInt16(offset: 10)
         params.pumpManager.state.dailyMaxInsulin = params.data.toUInt16(offset: 12)
-        params.pumpManager.state.basal = basalSchedule
-        params.pumpManager.state.basalSince = Date.now
-        params.pumpManager.state.reservoirLevel = params.pumpManager.currentModel.index == 0 ? 200 : 300
-        params.pumpManager.state.patchState = .active
-        params.pumpManager.state.activatedAt = Date.now
+        let now = Date.now
+        let state = params.pumpManager.state
+        state.basal = basalSchedule
+        state.reservoirLevel = params.pumpManager.currentModel.index == 0 ? 200 : 300
+        // A new patch: a new id, its records from 1 on
+        state.activate(patchId: params.pumpManager.nextPatchId(), at: now)
+        state.patchState = .active
+        state.activatedAt = now
         params.pumpManager.notifyStateDidUpdate()
 
         var response = Data()
-        response.append(params.pumpManager.state.patchId.toData())
-        response.append(Date.now.toMedtrumSeconds())
+        response.append(state.patchId.toData())
+        response.append(now.toMedtrumSeconds())
         response.append(BasalType.STANDARD.rawValue) // Patch just activated, no temp basal could have been activated
-        response.append(UInt16(params.pumpManager.state.currentBaseBasalRate / 0.05).toData())
-        response.append(params.pumpManager.state.patchSequence.toData())
-        response.append(UInt16(params.pumpManager.state.patchId).toData())
-        response.append(params.pumpManager.state.basalSince.toMedtrumSeconds())
+        response.append(UInt16(state.currentBaseBasalRate / 0.05).toData())
+        response.append(state.basalSequence.toData())
+        response.append(UInt16(truncatingIfNeeded: state.patchId).toData())
+        response.append(state.basalSince.toMedtrumSeconds())
 
         bluetoothManager.writeResponse(
             data: response,
@@ -68,6 +72,17 @@ extension MedtrumKitPackets {
     }
 
     static func parseDeactivatePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        // What was running ends here: its records are the last of this patch
+        if let delivered = endBolus(pumpManager: params.pumpManager, cause: bolusInterrupted) {
+            logger.info("Bolus cut by the stop at \(delivered)U")
+        }
+        params.pumpManager.state.stop(at: .now)
+
+        // The newest record, as the patch stops
+        var response = Data()
+        response.append(params.pumpManager.state.recordLog.newestWritten.toData())
+        response.append(UInt16(truncatingIfNeeded: params.pumpManager.state.patchId).toData())
+
         params.pumpManager.state.patchState = .filled
         params.pumpManager.state.reservoirLevel = params.pumpManager.currentModel.index == 0 ? 200 : 300
         params.pumpManager.state.suspendedSince = nil
@@ -75,10 +90,6 @@ extension MedtrumKitPackets {
         params.pumpManager.state.tempBasalRate = nil
         params.pumpManager.state.tempBasalDuration = nil
         params.pumpManager.notifyStateDidUpdate()
-
-        var response = Data()
-        response.append(params.pumpManager.state.patchSequence.toData())
-        response.append(UInt16(params.pumpManager.state.patchId).toData())
 
         bluetoothManager.writeResponse(
             data: response,
@@ -97,33 +108,36 @@ extension MedtrumKitPackets {
         logger.info("Processed Clear alert message!")
     }
 
+    static func stopPrimeTimer() {
+        primeTimer?.cancel()
+        primeTimer = nil
+    }
+
     private static func schedulePrimeUpdate(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
-        DispatchQueue.main.async {
-            primeTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { _ in
-                if let primeProgress = params.pumpManager.state.primeProgress {
-                    params.pumpManager.state.primeProgress = primeProgress + 4
+        stopPrimeTimer()
+        primeTimer = repeatingTimer(on: params.pumpManager.queue, every: 1.0) {
+            if let primeProgress = params.pumpManager.state.primeProgress {
+                params.pumpManager.state.primeProgress = primeProgress + 4
 
-                    if primeProgress > 100 {
-                        params.pumpManager.state.patchState = .ejected
-                        params.pumpManager.state.primeProgress = nil
+                if primeProgress > 100 {
+                    params.pumpManager.state.patchState = .ejected
+                    params.pumpManager.state.primeProgress = nil
 
-                        logger.info("Priming completed!")
+                    logger.info("Priming completed!")
 
-                        primeTimer?.invalidate()
-                        primeTimer = nil
-                    }
-                } else {
-                    params.pumpManager.state.primeProgress = 1
+                    stopPrimeTimer()
                 }
-
-                params.pumpManager.notifyStateDidUpdate()
-
-                bluetoothManager.writeResponse(
-                    data: MedtrumKitPackets.generateSynchronizePacket(state: params.pumpManager.state),
-                    status: .stateUpdate,
-                    params.updateParam
-                )
+            } else {
+                params.pumpManager.state.primeProgress = 1
             }
+
+            params.pumpManager.notifyStateDidUpdate()
+
+            bluetoothManager.writeResponse(
+                data: MedtrumKitPackets.generateSynchronizePacket(state: params.pumpManager.state),
+                status: .stateUpdate,
+                params.updateParam
+            )
         }
     }
 }
