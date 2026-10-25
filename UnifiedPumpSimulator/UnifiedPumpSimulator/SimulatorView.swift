@@ -17,6 +17,11 @@ struct SimulatorView: View {
             }
             .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity, alignment: .topLeading)
 
+            if !viewModel.pumpManagerControlGroups.isEmpty || !viewModel.pumpManagerLists.isEmpty {
+                Divider()
+                PumpExtras
+            }
+
             Divider()
             LoggerView
         }
@@ -204,6 +209,20 @@ struct SimulatorView: View {
         .padding(.all, 10)
     }
 
+    var PumpExtras: some View {
+        HStack(alignment: .top, spacing: 20) {
+            ForEach(viewModel.pumpManagerControlGroups) { group in
+                PumpControlGroupView(group: group, revision: viewModel.stateRevision)
+            }
+
+            ForEach(viewModel.pumpManagerLists) { list in
+                PumpListView(list: list, rows: viewModel.listRows[list.id] ?? [])
+            }
+        }
+        .padding(.all, 10)
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: 360, alignment: .topLeading)
+    }
+
     var LoggerView: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 5) {
@@ -260,6 +279,118 @@ struct PumpSliderView: View {
             .frame(maxWidth: 200)
         }
         .onAppear { value = slider.get() }
+    }
+}
+
+struct PumpControlGroupView: View {
+    let group: PumpManagerControlGroup
+    /// Changes with every state update, so the controls re-read their values
+    let revision: Int
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(group.title)
+                .font(.title3)
+                .bold()
+
+            ScrollView(.vertical) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 4) {
+                        ForEach(group.rows) { row in
+                            GridRow {
+                                Text(row.label)
+                                    .font(.headline)
+
+                                ForEach(row.controls) { control in
+                                    PumpControlView(control: control)
+                                }
+                            }
+                        }
+                    }
+
+                    if let footnote = group.footnote {
+                        Text(footnote)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(width: 520, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+            }
+        }
+        .fixedSize(horizontal: true, vertical: false)
+    }
+}
+
+struct PumpControlView: View {
+    let control: PumpManagerControl
+
+    var body: some View {
+        switch control.kind {
+        case let .picker(options, get, set):
+            Picker(control.label, selection: Binding(get: get, set: set)) {
+                ForEach(options.indices, id: \.self) { index in
+                    Text(options[index]).tag(index)
+                }
+            }
+            .labelsHidden()
+            .frame(width: 230)
+
+        case let .toggle(get, set):
+            Toggle(control.label, isOn: Binding(get: get, set: set))
+
+        case let .number(range, step, unit, get, set):
+            Stepper(value: Binding(get: get, set: set), in: range, step: step) {
+                Text("\(control.label) \(String(format: "%g", get()))\(unit)")
+                    .monospacedDigit()
+            }
+
+        @unknown default:
+            EmptyView()
+        }
+    }
+}
+
+struct PumpListView: View {
+    let list: PumpManagerList
+    let rows: [[String]]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(list.title)
+                .font(.title3)
+                .bold()
+
+            if rows.isEmpty {
+                Text(list.emptyText)
+                    .foregroundStyle(.secondary)
+            } else {
+                ScrollView([.vertical, .horizontal]) {
+                    Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 2) {
+                        GridRow {
+                            ForEach(list.columns.indices, id: \.self) { index in
+                                Text(list.columns[index])
+                                    .bold()
+                            }
+                        }
+
+                        Divider()
+                            .gridCellUnsizedAxes(.horizontal)
+
+                        ForEach(rows.indices, id: \.self) { index in
+                            GridRow {
+                                ForEach(rows[index].indices, id: \.self) { column in
+                                    Text(rows[index][column])
+                                        .font(.system(.body, design: .monospaced))
+                                        .textSelection(.enabled)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        .frame(minWidth: 0, maxWidth: .infinity, alignment: .topLeading)
     }
 }
 

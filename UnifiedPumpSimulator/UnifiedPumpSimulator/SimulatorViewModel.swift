@@ -31,6 +31,12 @@ class SimulatorViewModel: ObservableObject {
     @Published var bolusProgress: BolusState? = nil
     @Published var pumpManagerAction: [PumpManagerActions] = []
     @Published var pumpManagerSliders: [PumpManagerSlider] = []
+    @Published var pumpManagerControlGroups: [PumpManagerControlGroup] = []
+    @Published var pumpManagerLists: [PumpManagerList] = []
+    /// The rows of each list, as of the last state update
+    @Published var listRows: [UUID: [[String]]] = [:]
+    /// Bumped on every state update, so controls re-read values the pump manager changed itself
+    @Published var stateRevision = 0
 
     private var assertionID: IOPMAssertionID = 0
     private var sleepDisabled = false
@@ -72,6 +78,8 @@ class SimulatorViewModel: ObservableObject {
         supportedPumpModels = pumpManager.capabilities.supportedModels
         pumpManagerAction = pumpManager.capabilities.actions
         pumpManagerSliders = pumpManager.capabilities.sliders
+        pumpManagerControlGroups = pumpManager.capabilities.controlGroups
+        pumpManagerLists = pumpManager.capabilities.lists
         currentPump = pumpManager.currentModel
         currentPumpIndex = currentPump.index
 
@@ -132,6 +140,8 @@ extension SimulatorViewModel: StorageDelegate {
             self.pumpState = self.pumpManager.pumpState
             self.reservoirLevel = self.integerFormatter.string(from: pumpManager.reservoirLevel as NSNumber) ?? "0"
             self.bolusProgress = self.pumpManager.bolusProgress
+            self.listRows = Dictionary(uniqueKeysWithValues: self.pumpManagerLists.map { ($0.id, $0.rows()) })
+            self.stateRevision &+= 1
 
             if let activatedAt = self.pumpManager.activatedAt {
                 self.activatedAt = self.dateSmallFormatter.string(from: activatedAt)
