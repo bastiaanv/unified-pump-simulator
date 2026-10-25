@@ -18,6 +18,28 @@ extension MedtrumKitBluetoothManager {
 
     func writeResponse(data: Data, status: ResponseStatus, _ params: WriteResponseParam) {
         let messages = encodePacket(data, status: status, params.responseCode, params.messageId)
+
+        // The answer to a command a fault is armed for may be held back or dropped, and a status the command pushes
+        // with it
+        if status == .stateUpdate ? holdBackStatus(data, params) : holdBackAnswer(messages, status: status, params) {
+            return
+        }
+
+        enqueue(messages, params)
+    }
+
+    func enqueue(_ messages: [Data], _ params: WriteResponseParam) {
+        guard !isLinkSilent else {
+            logger.warning("[FAULT] Link silent, not sent: \(messages.map { $0.hexString() }.joined(separator: " "))")
+            return
+        }
+
+        // No phone: nothing is kept for one that connects later
+        guard !subscriptions.isEmpty else {
+            logger.info("No phone subscribed, not sent: \(messages.map { $0.hexString() }.joined(separator: " "))")
+            return
+        }
+
         for message in messages {
             writeQueue.append((message, params.characteristic))
         }

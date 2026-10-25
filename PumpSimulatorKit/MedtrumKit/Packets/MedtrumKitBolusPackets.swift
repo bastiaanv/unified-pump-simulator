@@ -55,6 +55,7 @@ extension MedtrumKitPackets {
     static func stopBolus(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
         // A cancel with no bolus running is answered as a success, as real patches do
         guard let delivered = endBolus(pumpManager: params.pumpManager, cause: bolusCancelled) else {
+            bluetoothManager.skipFault("no bolus to cancel")
             bluetoothManager.writeResponse(data: Data(), status: .ok, params.responseParam)
             logger.info("Processed Stop bolus message, no bolus was running")
             return

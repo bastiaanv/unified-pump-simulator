@@ -11,9 +11,22 @@ class MedtrumKitBluetoothManager {
     private let WRITE_CHAR_UUID = CBUUID(string: "669a9101-0008-968f-e311-6050405558b3")
     private let WRITE_CHARACTERISTIC: CBMutableCharacteristic
 
-    var subscribedCentrals: [CBCentral] = []
+    /// The connected phones, by the characteristics each subscribed to
+    var subscriptions: [UUID: Set<CBUUID>] = [:]
     var writeQueue: [(Data, CBMutableCharacteristic)] = []
-    private var buffer = Data()
+    var buffer = Data()
+
+    /// The fault armed for the command being executed - see `MedtrumKitBluetoothManager+Faults.swift`
+    var commandFault: PendingCommandFault?
+    /// The link is silent for a fault until then: nothing goes out, what comes in is lost
+    var linkSilentUntil: Date?
+    var isLinkSilent: Bool {
+        linkSilentUntil != nil
+    }
+
+    /// Goes up as a connection starts and ends, at Start, Stop and Reset Pump: a late answer is sent in the session it
+    /// was held back in only
+    var session = 0
 
     init(pumpBluetoothManager: PumpBluetoothmanager) {
         WRITE_CHARACTERISTIC = CBMutableCharacteristic(
@@ -34,6 +47,7 @@ class MedtrumKitBluetoothManager {
 
     func startAdvertising() {
         pumpBluetoothManager.bluetoothManagerDelegate = self
+        session += 1
 
         let service = CBMutableService(type: SERVICE_UUID, primary: true)
         service.characteristics = [SUBSCRIPTION_CHARACTERISTIC, WRITE_CHARACTERISTIC]
@@ -50,9 +64,33 @@ class MedtrumKitBluetoothManager {
         pumpBluetoothManager.stopAdvertising()
         MedtrumKitPackets.unscheduleUpdates()
 
-        subscribedCentrals.removeAll()
+        subscriptions.removeAll()
+        endSession()
+    }
+
+    /// Nothing from before goes out after this: what is queued and a pending command fault are dropped, a silent link
+    /// ends, and a late answer held back is dropped when due (`session`). At Stop and Reset Pump.
+    func endSession() {
         writeQueue.removeAll()
         buffer = Data()
+        commandFault = nil
+        linkSilentUntil = nil
+        session += 1
+    }
+
+    /// The phone is gone: what was queued for it is dropped, a late answer held back for it is dropped when due. A
+    /// silent link goes on - it is the radio's, not the connection's.
+    private func endConnection(_ reason: String) {
+        MedtrumKitPackets.unscheduleUpdates()
+        subscriptions.removeAll()
+        if !writeQueue.isEmpty {
+            logger.info("\(reason): \(writeQueue.count) queued write(s) dropped")
+        } else {
+            logger.info(reason)
+        }
+        writeQueue.removeAll()
+        buffer = Data()
+        session += 1
     }
 }
 
@@ -98,6 +136,14 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
 
         logger.info("Received message: \(buffer.hexString())")
         let command = buffer[1]
+
+        // The link is silent for a fault: what the phone sends never arrives
+        if isLinkSilent {
+            logger.warning("[FAULT] Link silent: \(MedtrumKitCommandFaults.name(of: command)) lost, not executed")
+            peripheralManager.respond(to: request, withResult: .success)
+            buffer = Data()
+            return
+        }
         let param = MedtrumKitPackets.MedtrumKitPacketRequest(
             data: buffer,
             pumpManager: pumpManager,
@@ -118,7 +164,15 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
         // Temp basals and suspends that ran out, midnights passed: before the command acts on them
         pumpManager.advanceDelivery()
 
+        guard !takeNotExecutedFault(for: command) else {
+            peripheralManager.respond(to: request, withResult: .success)
+            buffer = Data()
+            return
+        }
+
+        armFault(for: command)
         dispatch(command, param)
+        finishCommandFault()
 
         peripheralManager.respond(to: request, withResult: .success)
         buffer = Data()
@@ -172,8 +226,10 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
             return
         }
 
+        // A real patch keeps nothing for a phone that is gone
         guard let centrals = item.1.subscribedCentrals, !centrals.isEmpty else {
-            logger.error("Cannot write value to device -> No subscribed centrals...")
+            logger.error("Cannot write value to device -> No subscribed centrals: \(writeQueue.count) write(s) dropped")
+            writeQueue.removeAll()
             return
         }
 
@@ -189,13 +245,20 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
         readyForNextMessage(peripheral)
     }
 
-    func didReceiveSubscribe(central: CBCentral, peripheralManager: CBPeripheralManager) {
-        if subscribedCentrals.contains(central) {
-            return
+    func didReceiveSubscribe(central: CBCentral, to characteristic: CBCharacteristic, peripheralManager: CBPeripheralManager) {
+        // Subscribed to it already: the connection it did that on ended without CoreBluetooth telling
+        if subscriptions[central.identifier]?.contains(characteristic.uuid) == true {
+            endConnection("The phone subscribed again, its last connection is over")
         }
 
-        subscribedCentrals.append(central)
-        if let pumpManager = pumpManagerDelegate {
+        let isNewCentral = subscriptions[central.identifier] == nil
+        if subscriptions.isEmpty {
+            // A new connection
+            session += 1
+        }
+        subscriptions[central.identifier, default: []].insert(characteristic.uuid)
+
+        if isNewCentral, let pumpManager = pumpManagerDelegate {
             let param = MedtrumKitPackets.MedtrumKitPacketRequest(
                 data: buffer,
                 pumpManager: pumpManager,
@@ -218,14 +281,22 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
     }
 
     func didUnsubscribe(central: CBCentral) {
-        guard let index = subscribedCentrals.firstIndex(of: central) else {
+        guard subscriptions.removeValue(forKey: central.identifier) != nil else {
             return
         }
 
-        subscribedCentrals.remove(at: index)
-        if subscribedCentrals.isEmpty {
-            MedtrumKitPackets.unscheduleUpdates()
+        if subscriptions.isEmpty {
+            endConnection("The phone unsubscribed")
         }
+    }
+
+    func didUpdateState(_ state: CBManagerState) {
+        // Below powered on, every phone has been disconnected - CoreBluetooth may not say so per phone
+        guard state != .poweredOn, !subscriptions.isEmpty || !writeQueue.isEmpty else {
+            return
+        }
+
+        endConnection("Bluetooth is no longer on (state \(state.rawValue)), the phone is disconnected")
     }
 }
 

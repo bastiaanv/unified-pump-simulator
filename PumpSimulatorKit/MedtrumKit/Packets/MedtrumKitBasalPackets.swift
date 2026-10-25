@@ -78,6 +78,9 @@ extension MedtrumKitPackets {
 
     static func parseStopTempBasalPacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
         let state = params.pumpManager.state
+        if !state.isDeliveringBasal || state.tempBasalRate == nil {
+            bluetoothManager.skipFault("no temp basal to cancel")
+        }
         state.cancelTempBasal(at: .now)
         params.pumpManager.notifyStateDidUpdate()
 

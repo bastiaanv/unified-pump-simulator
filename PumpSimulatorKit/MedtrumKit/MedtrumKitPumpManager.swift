@@ -96,9 +96,10 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
     }
 
     let logger = PumpManagerLogger(subsystem: "com.bastiaanv.medtrumkit", category: "MedtrumKitPumpManager")
-    private let bluetooth: MedtrumKitBluetoothManager
+    let bluetooth: MedtrumKitBluetoothManager
     var state: MedtrumKitState
     var isRunning: Bool = false
+    let commandFaults = MedtrumKitCommandFaults()
 
     /// The queue the patch's state is changed on
     var queue: DispatchQueue {
@@ -158,7 +159,9 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
             logger.info("A bolus was running when the simulator closed, from before records were kept: cleared")
         }
 
+        capabilities.controlGroups.append(commandFaultControls())
         capabilities.lists.append(recordList())
+        capabilities.lists.append(armedFaultList())
 
         bluetooth.pumpManagerDelegate = self
 
@@ -173,6 +176,7 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
 
     public func startAdvertising() {
         queue.async { [self] in
+            // Faults armed while stopped stay armed: Start is the natural moment to arm one
             if state.activatedAt == nil {
                 state.activatedAt = Date.now
                 state.patchState = .filled
@@ -189,6 +193,9 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
             MedtrumKitPackets.stopBolusTimer()
             MedtrumKitPackets.stopPrimeTimer()
             state = MedtrumKitState(rawValue: [:])
+            // A new pump: nothing from the old one reaches the phone - a silent link, a late answer
+            bluetooth.endSession()
+            resetCommandFaults()
             notifyStateDidUpdate()
         }
     }
@@ -201,6 +208,8 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
 
             bluetooth.stopAdvertising()
             isRunning = false
+            resetCommandFaults()
+            notifyStateDidUpdate()
 
             logger.info("MedtrumKit simulator has been stopped!")
         }
@@ -217,7 +226,9 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         return next
     }
 
+    /// Saves the state and refreshes the UI - on the queue, the state's writes being there
     func notifyStateDidUpdate() {
+        dispatchPrecondition(condition: .onQueue(queue))
         storageDelegate?.saveState(MedtrumKitPumpManager.self, self)
     }
 
