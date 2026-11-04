@@ -27,6 +27,12 @@ class MedtrumKitState {
         dayBolus = rawValue["dayBolus"] as? Double ?? 0
         dayBasal = rawValue["dayBasal"] as? Double ?? 0
         timeZoneOffset = rawValue["timeZoneOffset"] as? Int
+        lowReservoirAlarmed = rawValue["lowReservoirAlarmed"] as? Bool ?? false
+        baseCountersAt = rawValue["baseCountersAt"] as? Date
+        baseLifetimeSteps = rawValue["baseLifetimeSteps"] as? Int ?? 0
+        stoppedPatchUntil = rawValue["stoppedPatchUntil"] as? Date
+        baseResetAt = rawValue["baseResetAt"] as? Date
+        haltedAs = (rawValue["haltedAs"] as? PatchState.RawValue).flatMap(PatchState.init(rawValue:))
 
         if let rawRecordLog = rawValue["recordLog"] as? Data,
            let decoded = try? JSONDecoder().decode(MedtrumKitRecordLog.self, from: rawRecordLog)
@@ -88,6 +94,12 @@ class MedtrumKitState {
         state["dayBolus"] = dayBolus
         state["dayBasal"] = dayBasal
         state["timeZoneOffset"] = timeZoneOffset
+        state["lowReservoirAlarmed"] = lowReservoirAlarmed
+        state["baseCountersAt"] = baseCountersAt
+        state["baseLifetimeSteps"] = baseLifetimeSteps
+        state["stoppedPatchUntil"] = stoppedPatchUntil
+        state["baseResetAt"] = baseResetAt
+        state["haltedAs"] = haltedAs?.rawValue
         state["recordLog"] = try? JSONEncoder().encode(recordLog)
 
         do {
@@ -135,7 +147,29 @@ class MedtrumKitState {
     }
 
     var basal: [BasalItem]
+    /// What the reservoir held as the running segment started, less the boluses that ended since - see
+    /// `insulinLeft` for what it holds now
     var reservoirLevel: Double
+    /// The low reservoir warning was written (an ALARM record, bit 2) for this patch
+    var lowReservoirAlarmed: Bool
+    /// When the base last wrote its counters (a BASE record, every 8 h), and the insulin it has delivered over every
+    /// patch, in 0.05 U steps
+    var baseCountersAt: Date?
+    var baseLifetimeSteps: Int
+    /// A temp basal ended by running dry claims this much more than it delivered in its record - an option, as real
+    /// patches' records were seen to. Not saved.
+    var emptyRecordExtra: Double = 0
+    /// The patch halted on its own and the phone is still to be told: the pump manager sends a status - with the
+    /// completion of a bolus it cut - as it brings the patch up to date (`advanceDelivery`). Not saved.
+    var haltNotice: HaltNotice?
+    /// The stopped patch still answers until then, with its own id and records, before the base is on a new one
+    /// (`MedtrumKitPumpManager.stopPatch`)
+    var stoppedPatchUntil: Date?
+    /// The base restarted then: it lost the patch's session and reports state none with the next patch's id
+    /// (`patchId`) and its age, until a patch is activated under that id
+    var baseResetAt: Date?
+    /// The halt the patch came to, if any - its alarms stay on once it is stopped
+    var haltedAs: PatchState?
 
     var basalSince: Date
     var suspendedSince: Date?
@@ -198,6 +232,12 @@ class MedtrumKitState {
         let index = (basal.firstIndex(where: { $0.start > timeInterval }) ?? basal.count) - 1
         return basal.indices.contains(index) ? basal[index].rate : basal[0].rate
     }
+}
+
+/// Running dry, which the phone is still to be told of
+struct HaltNotice {
+    /// What a bolus it cut had delivered
+    let cutBolus: Double?
 }
 
 public enum PatchState: UInt8, Codable {

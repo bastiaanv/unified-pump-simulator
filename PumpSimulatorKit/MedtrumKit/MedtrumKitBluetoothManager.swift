@@ -18,6 +18,8 @@ class MedtrumKitBluetoothManager {
 
     /// The fault armed for the command being executed - see `MedtrumKitBluetoothManager+Faults.swift`
     var commandFault: PendingCommandFault?
+    /// The command answered last, and how: whether a halt armed on it applies (`haltAfter`)
+    var lastAnswer: (command: UInt8, status: ResponseStatus)?
     /// The link is silent for a fault until then: nothing goes out, what comes in is lost
     var linkSilentUntil: Date?
     var isLinkSilent: Bool {
@@ -170,9 +172,16 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
             return
         }
 
-        armFault(for: command)
+        let halt = armHalt(for: command)
+        if halt == nil {
+            armFault(for: command)
+        }
+        lastAnswer = nil
         dispatch(command, param)
         finishCommandFault()
+        if let halt {
+            haltAfter(command, halt)
+        }
 
         peripheralManager.respond(to: request, withResult: .success)
         buffer = Data()
@@ -208,6 +217,8 @@ extension MedtrumKitBluetoothManager: BluetoothManagerDelegate {
             MedtrumKitPackets.parseStopTempBasalPacket(param, self)
         case CommandType.CLEAR_ALARM:
             MedtrumKitPackets.parseClearAlertPacket(param, self)
+        case CommandType.SET_PATCH:
+            MedtrumKitPackets.parseSetPatchPacket(param, self)
         case CommandType.SET_BASAL_PROFILE:
             MedtrumKitPackets.parseBasalSchedulePacket(param, self)
         case CommandType.SET_BOLUS:

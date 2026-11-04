@@ -2,6 +2,10 @@ import Foundation
 
 extension MedtrumKitPackets {
     static func parseBasalSchedulePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        guard acceptsDeliveryCommand(params, bluetoothManager, "basal schedule") else {
+            return
+        }
+
         let basalEntries = Int(params.data[5])
         var basalSchedule: [BasalItem] = []
         for i in 0 ..< basalEntries {
@@ -77,6 +81,10 @@ extension MedtrumKitPackets {
     }
 
     static func parseStopTempBasalPacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        guard acceptsDeliveryCommand(params, bluetoothManager, "cancel temp basal") else {
+            return
+        }
+
         let state = params.pumpManager.state
         if !state.isDeliveringBasal || state.tempBasalRate == nil {
             bluetoothManager.skipFault("no temp basal to cancel")
@@ -117,6 +125,25 @@ extension MedtrumKitPackets {
         // The temp basal that started, and the record of the segment it ended
         bluetoothManager.writeResponse(data: segmentAnswer(state), status: .ok, params.responseParam)
         logger.info("Processed TempBasal message!")
+    }
+
+    /// Whether the patch takes a delivery command it may have nothing to run for - a cancel, a new schedule. It does
+    /// while it runs or is halted (answered as "nothing to do" if so); one stopped, or a base with no patch activated -
+    /// set up, or restarted - refuses it with code 8, the refusal real patches answer a command they can't run with.
+    /// Answered here if refused.
+    static func acceptsDeliveryCommand(
+        _ params: MedtrumKitPacketRequest,
+        _ bluetoothManager: MedtrumKitBluetoothManager,
+        _ what: String
+    ) -> Bool {
+        let state = params.pumpManager.state
+        guard state.patchState == .stopped || state.patchState.rawValue < PatchState.active.rawValue else {
+            return true
+        }
+
+        logger.warning("Rejecting \(what) in state \(state.patchState.title): no patch running")
+        bluetoothManager.writeResponse(data: Data(), status: .invalidState, params.responseParam)
+        return false
     }
 
     /// The answer to the commands that start a basal segment: its type, rate, the record of the segment it replaced

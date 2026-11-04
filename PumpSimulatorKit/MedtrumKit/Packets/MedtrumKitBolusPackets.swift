@@ -32,6 +32,37 @@ extension MedtrumKitPackets {
         let state = params.pumpManager.state
         let startTime = Date.now
         let recordNumber = state.startBolus(amount: amount, at: startTime)
+        let runsDry = params.pumpManager.patchFaults.update { settings in
+            let armed = settings.dryDuringNextBolus
+            settings.dryDuringNextBolus = false
+            return armed
+        }
+        let replaced = params.pumpManager.patchFaults.update { settings in
+            let armed = settings.replaceDuringNextBolus
+            settings.replaceDuringNextBolus = false
+            return armed
+        }
+        if replaced {
+            logger.warning("[FAULT] The base is put on a new patch 5 s into this bolus, the old one never stopped")
+            let generation = params.pumpManager.patchFaults.generation
+            params.pumpManager.queue.asyncAfter(deadline: .now() + 5) { [weak pumpManager = params.pumpManager] in
+                // Not if the bolus is over, or the faults were disarmed since
+                guard let pumpManager, pumpManager.state.bolusStart == startTime,
+                      pumpManager.patchFaults.generation == generation
+                else {
+                    return
+                }
+                pumpManager.logger.warning("[FAULT] The base is on a new patch: the old one was never stopped")
+                pumpManager.putNewPatch(announce: true)
+            }
+        }
+        if runsDry {
+            // What is left is half the bolus: it is cut there (`scheduleBolus`)
+            let half = max(0.05, roundToSupportedBolusVolume(amount / 2))
+            let segment = state.isDeliveringBasal ? state.segmentDelivered(until: startTime) : 0
+            state.reservoirLevel = segment + half
+            logger.warning("[FAULT] The reservoir holds \(half)U for this \(amount)U bolus: it runs dry halfway through")
+        }
         // A real patch has delivered its first pulse by the time it answers
         state.bolusProgress = min(amount, 0.05)
         params.pumpManager.notifyStateDidUpdate()
@@ -53,6 +84,10 @@ extension MedtrumKitPackets {
     }
 
     static func stopBolus(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        guard acceptsDeliveryCommand(params, bluetoothManager, "cancel bolus") else {
+            return
+        }
+
         // A cancel with no bolus running is answered as a success, as real patches do
         guard let delivered = endBolus(pumpManager: params.pumpManager, cause: bolusCancelled) else {
             bluetoothManager.skipFault("no bolus to cancel")
@@ -98,7 +133,6 @@ extension MedtrumKitPackets {
         // 1.5 unit per minute
         let duration = amount / 1.5 * TimeInterval(minutes: 1)
         let endTime = startTime.addingTimeInterval(duration)
-        let originalReservoirLevel = pumpManager.state.reservoirLevel
 
         stopBolusTimer()
         bolusTimer = repeatingTimer(on: pumpManager.queue, every: 2.0) {
@@ -112,8 +146,18 @@ extension MedtrumKitPackets {
             let progressPercentage = Date.now.timeIntervalSince(startTime) / endTime.timeIntervalSince(startTime)
             let progress = min(amount, roundToSupportedBolusVolume(amount * progressPercentage))
 
-            state.reservoirLevel = originalReservoirLevel - progress
+            // What the reservoir holds for the bolus: short of it, the patch runs dry with the bolus cut at that. One
+            // that empties it exactly completes, the basal then runs dry (`MedtrumKitState.advance`).
+            let available = state.insulinForBolus(at: .now)
+            if available < amount, progress >= available {
+                state.bolusProgress = available
+                stopBolusTimer()
+                pumpManager.runDry()
+                return
+            }
+
             state.bolusProgress = progress
+            state.noteLowReservoir(at: .now)
 
             guard progressPercentage >= 1.0 else {
                 pumpManager.notifyStateDidUpdate()
@@ -124,8 +168,11 @@ extension MedtrumKitPackets {
             stopBolusTimer()
 
             // Records that ran out meanwhile first, then the bolus: written as it completes, so the completion
-            // notification already names its record
+            // notification already names its record. Those may have ended it - the basal ran dry first.
             pumpManager.advanceDelivery()
+            guard state.isBolusRunning, state.bolusStart == startTime else {
+                return
+            }
             state.finishBolus(delivered: amount, cause: bolusCompleted, at: .now)
             pumpManager.notifyStateDidUpdate()
             sendStatusUpdate(completedBolus: CompletedBolus(cause: bolusCompleted, delivered: amount))

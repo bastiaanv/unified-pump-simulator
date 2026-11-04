@@ -19,7 +19,38 @@ extension MedtrumKitPackets {
         }
 
         let response: Data
-        if let record = state.recordLog.record(number) {
+        let faults = params.pumpManager.patchFaults
+        if let record = state.recordLog.record(number),
+           let fault = faults.update({ settings -> RecordReadFault? in
+               guard settings.recordFault != .normal,
+                     settings.recordFaultNumber.map({ $0 == number }) ?? settings.recordTarget.matches(record)
+               else {
+                   return nil
+               }
+               let fault = settings.recordFault
+               if settings.recordFaultSticks {
+                   // Every read of this record from now on
+                   settings.recordFaultNumber = number
+               } else {
+                   // Used up by this read
+                   settings.recordFault = .normal
+               }
+               return fault
+           })
+        {
+            switch fault {
+            case .emptySlot:
+                response = MedtrumKitRecord.emptySlot(number: number, serial: state.serialNumber, patchId: state.patchId)
+            case .badCrc:
+                response = record.encode(serial: state.serialNumber, patchId: state.patchId, corruptCrc: true)
+            case .otherPatchId:
+                response = record.encode(serial: state.serialNumber, patchId: state.patchId &+ 1)
+            case .normal:
+                response = record.encode(serial: state.serialNumber, patchId: state.patchId)
+            }
+            logger.warning("[FAULT] GetRecord #\(number) (\(record.typeName)) answered with: \(fault.title)")
+            params.pumpManager.notifyStateDidUpdate()
+        } else if let record = state.recordLog.record(number) {
             response = record.encode(serial: state.serialNumber, patchId: state.patchId)
             logger.info("Processed GetRecord message! Record #\(number): \(record.typeName)")
         } else {

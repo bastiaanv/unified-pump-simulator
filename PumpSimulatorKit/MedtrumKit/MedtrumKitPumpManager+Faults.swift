@@ -68,22 +68,30 @@ extension MedtrumKitPumpManager {
         }
     }
 
+    /// The command and patch faults armed, and what they hold now - a silent link, a stopped patch still answering
     func armedFaultList() -> PumpManagerList {
-        PumpManagerList(title: "Armed faults", columns: ["Command", "Fault"], emptyText: "None: every command runs normally") {
-            [weak self] in
+        PumpManagerList(
+            title: "Armed faults",
+            columns: ["Where", "Fault"],
+            emptyText: "None: every command runs normally, the patch too"
+        ) { [weak self] in
             guard let self else {
                 return []
             }
 
-            var rows = commandFaults.armed.map { [$0.name, $0.fault.description] }
-            if let until = bluetooth.linkSilentUntil {
+            let snapshot = snapshot
+            var rows = commandFaults.armed.map { [$0.name, $0.description] } + patchFaults.armed
+            if let until = snapshot.linkSilentUntil {
                 rows.insert(["Link", "silent until \(Self.timeFormatter.string(from: until))"], at: 0)
+            }
+            if let until = snapshot.stoppedPatchUntil {
+                rows.insert(["Patch", "stopped, answering until \(Self.timeFormatter.string(from: until))"], at: 0)
             }
             return rows
         }
     }
 
-    private static let timeFormatter: DateFormatter = {
+    static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm:ss"
         return formatter

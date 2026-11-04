@@ -3,6 +3,9 @@ import SwiftUI
 
 struct SimulatorView: View {
     @ObservedObject var viewModel: SimulatorViewModel
+    /// The control group and the list shown, when there are several of each
+    @State private var selectedGroup = 0
+    @State private var selectedList = 0
 
     var body: some View {
         VStack {
@@ -202,25 +205,61 @@ struct SimulatorView: View {
             }
 
             ForEach(viewModel.pumpManagerSliders) { slider in
-                PumpSliderView(slider: slider)
-                    .disabled(!viewModel.simulatorRunning)
+                PumpSliderView(slider: slider, revision: viewModel.stateRevision, simulatorRunning: viewModel.simulatorRunning)
             }
         }
         .padding(.all, 10)
     }
 
+    /// The control groups on the left, the lists on the right: one of each at a time when there are several, picked
+    /// from a segmented control above them
     var PumpExtras: some View {
         HStack(alignment: .top, spacing: 20) {
-            ForEach(viewModel.pumpManagerControlGroups) { group in
-                PumpControlGroupView(group: group, revision: viewModel.stateRevision)
+            if !viewModel.pumpManagerControlGroups.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    if viewModel.pumpManagerControlGroups.count > 1 {
+                        Picker("", selection: $selectedGroup) {
+                            ForEach(viewModel.pumpManagerControlGroups.indices, id: \.self) { index in
+                                Text(viewModel.pumpManagerControlGroups[index].title).tag(index)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+
+                    let groups = viewModel.pumpManagerControlGroups
+                    PumpControlGroupView(
+                        group: groups[min(selectedGroup, groups.count - 1)],
+                        revision: viewModel.stateRevision,
+                        simulatorRunning: viewModel.simulatorRunning
+                    )
+                }
             }
 
-            ForEach(viewModel.pumpManagerLists) { list in
-                PumpListView(list: list, rows: viewModel.listRows[list.id] ?? [])
+            if !viewModel.pumpManagerLists.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    if viewModel.pumpManagerLists.count > 1 {
+                        Picker("", selection: $selectedList) {
+                            ForEach(viewModel.pumpManagerLists.indices, id: \.self) { index in
+                                let list = viewModel.pumpManagerLists[index]
+                                let count = viewModel.listRows[list.id]?.count ?? 0
+                                Text(count > 0 ? "\(list.title) (\(count))" : list.title).tag(index)
+                            }
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .fixedSize()
+                    }
+
+                    let lists = viewModel.pumpManagerLists
+                    let list = lists[min(selectedList, lists.count - 1)]
+                    PumpListView(list: list, rows: viewModel.listRows[list.id] ?? [])
+                }
             }
         }
         .padding(.all, 10)
-        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: 360, alignment: .topLeading)
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: 420, alignment: .topLeading)
     }
 
     var LoggerView: some View {
@@ -263,22 +302,44 @@ struct SimulatorView: View {
 
 struct PumpSliderView: View {
     let slider: PumpManagerSlider
+    /// Changes with every state update: the slider then shows the pump's value again, unless it is being dragged
+    let revision: Int
+    let simulatorRunning: Bool
 
     @State private var value: Double = 0
+    @State private var isEditing = false
 
     var body: some View {
+        let isEnabled = simulatorRunning && slider.isEnabled()
+
         VStack(alignment: .leading, spacing: 2) {
-            Text("\(slider.label): \(Int(value))\(slider.unit)")
+            Text("\(slider.label): \(String(format: "%g", value))\(slider.unit)")
                 .font(.headline)
+                .monospacedDigit()
 
             Slider(value: $value, in: slider.range, step: slider.step) { editing in
+                isEditing = editing
                 if !editing {
                     slider.set(value)
                 }
             }
             .frame(maxWidth: 200)
+            .disabled(!isEnabled)
+
+            if let note = slider.note {
+                Text(note)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: 200, alignment: .leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
         }
         .onAppear { value = slider.get() }
+        .onChange(of: revision) {
+            if !isEditing {
+                value = slider.get()
+            }
+        }
     }
 }
 
@@ -286,6 +347,7 @@ struct PumpControlGroupView: View {
     let group: PumpManagerControlGroup
     /// Changes with every state update, so the controls re-read their values
     let revision: Int
+    let simulatorRunning: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -297,12 +359,22 @@ struct PumpControlGroupView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Grid(alignment: .leading, horizontalSpacing: 10, verticalSpacing: 4) {
                         ForEach(group.rows) { row in
-                            GridRow {
-                                Text(row.label)
-                                    .font(.headline)
+                            GridRow(alignment: .firstTextBaseline) {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(row.label)
+                                        .font(.headline)
+
+                                    if let detail = row.detail {
+                                        Text(detail)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .frame(minWidth: 200, idealWidth: 360, maxWidth: 480, alignment: .leading)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                }
 
                                 ForEach(row.controls) { control in
-                                    PumpControlView(control: control)
+                                    PumpControlView(control: control, simulatorRunning: simulatorRunning)
                                 }
                             }
                         }
@@ -324,6 +396,8 @@ struct PumpControlGroupView: View {
 
 struct PumpControlView: View {
     let control: PumpManagerControl
+    /// A button acts on the running pump only; settings can be changed while it is stopped
+    let simulatorRunning: Bool
 
     var body: some View {
         switch control.kind {
@@ -344,6 +418,10 @@ struct PumpControlView: View {
                 Text("\(control.label) \(String(format: "%g", get()))\(unit)")
                     .monospacedDigit()
             }
+
+        case let .button(action):
+            Button(control.label, action: action)
+                .disabled(!simulatorRunning)
 
         @unknown default:
             EmptyView()

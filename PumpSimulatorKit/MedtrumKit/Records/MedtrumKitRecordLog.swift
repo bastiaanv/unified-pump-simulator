@@ -7,8 +7,8 @@ import Foundation
 /// number the bolus will get if nothing else is written first (`nextNumber`) without taking it: a record the patch
 /// writes while the bolus runs takes that number, the bolus the one after it.
 ///
-/// Records are plain values in an array, looked up by number: the next pass's record faults (a missing, late, altered
-/// or foreign record) edit, drop or insert entries here, or hold one back from `record(_:)`.
+/// Records are plain values in an array, looked up by number. Record faults (`RecordReadFault`) leave them as they
+/// are: they change what a GET_RECORD answers for one.
 struct MedtrumKitRecordLog: Codable {
     /// Older records are dropped past this - MedtrumKit reads at most the last 20 of a patch it adopts
     static let capacity = 1000

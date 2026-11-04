@@ -2,32 +2,32 @@ import Foundation
 
 /// The patch's records, as the simulator lists them
 extension MedtrumKitPumpManager {
-    /// The current patch's records, newest first
+    /// The current patch's records, newest first - as of the last state update (`Snapshot`)
     func recordList() -> PumpManagerList {
         PumpManagerList(
             title: "Patch records",
             columns: ["#", "Type", "Start", "End", "Amounts", "Details"],
             emptyText: "No records: the patch writes them once activated"
         ) { [weak self] in
-            guard let self else {
-                return []
-            }
-
-            var rows: [[String]] = []
-            if let start = state.bolusStart, let total = state.bolusTotal {
-                rows.append([
-                    "",
-                    "BOLUS",
-                    Self.format(start),
-                    "running",
-                    "requested \(Self.units(total))",
-                    "answer named #\(state.bolusAnsweredNumber.map(String.init) ?? "?"), written as it ends",
-                ])
-            }
-
-            rows += state.recordLog.records.suffix(Self.listedRecords).reversed().map(Self.row)
-            return rows
+            self?.snapshot.recordRows ?? []
         }
+    }
+
+    /// The rows of `recordList`, built on the queue
+    func recordRows() -> [[String]] {
+        var rows: [[String]] = []
+        if let start = state.bolusStart, let total = state.bolusTotal {
+            rows.append([
+                "",
+                "BOLUS",
+                Self.format(start),
+                "running",
+                "requested \(Self.units(total))",
+                "answer named #\(state.bolusAnsweredNumber.map(String.init) ?? "?"), written as it ends",
+            ])
+        }
+
+        return rows + state.recordLog.records.suffix(Self.listedRecords).reversed().map(Self.row)
     }
 
     private static let listedRecords = 200
@@ -73,7 +73,31 @@ extension MedtrumKitPumpManager {
                 "\(tdd.minutes) min",
             ]
 
-        case .other:
+        case let .alarm(alarm):
+            let name = switch alarm.bit {
+            case MedtrumKitRecord.alarmLowReservoir: "low reservoir"
+            case MedtrumKitRecord.alarmSuspended: "delivery suspended"
+            case MedtrumKitRecord.alarmOcclusion: "occlusion"
+            case MedtrumKitRecord.alarmReservoirEmpty: "reservoir empty"
+            default: "unknown"
+            }
+            return [number, record.typeName, format(record.writtenAt), "", "", "bit \(alarm.bit): \(name)"]
+
+        case let .daily(daily):
+            return [number, record.typeName, format(record.writtenAt), "", "", "zone \(daily.timeZoneOffset) min"]
+
+        case let .baseCounters(counters):
+            return [
+                number,
+                record.typeName,
+                format(record.writtenAt),
+                "",
+                "lifetime \(units(Double(counters.lifetimeSteps) * 0.05))",
+                "",
+            ]
+
+        case .other,
+             .resumed:
             return [number, record.typeName, format(record.writtenAt), "", "", ""]
         }
     }

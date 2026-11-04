@@ -5,12 +5,16 @@ extension MedtrumKitPackets {
     static var primeTimer: DispatchSourceTimer?
 
     static func parsePrimePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        // Only a patch being filled primes: not one priming or activated already, nor a stopped one still answering
+        guard params.pumpManager.state.isFillable else {
+            logger.warning("Rejecting prime in state \(params.pumpManager.state.patchState.title): not a patch being filled")
+            bluetoothManager.writeResponse(data: Data(), status: .invalidState, params.responseParam)
+            return
+        }
+
+        params.pumpManager.state.clearDelivery()
         params.pumpManager.state.patchState = .priming
         params.pumpManager.state.primeProgress = 1
-        params.pumpManager.state.tempBasalStart = nil
-        params.pumpManager.state.tempBasalRate = nil
-        params.pumpManager.state.tempBasalDuration = nil
-        params.pumpManager.state.suspendedSince = nil
         params.pumpManager.notifyStateDidUpdate()
 
         bluetoothManager.writeResponse(
@@ -23,6 +27,13 @@ extension MedtrumKitPackets {
     }
 
     static func parseActivatePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        // Only a primed patch activates: one activated already - its answer lost, say - refuses a second Activate
+        guard [.primed, .ejected].contains(params.pumpManager.state.patchState) else {
+            logger.warning("Rejecting activate in state \(params.pumpManager.state.patchState.title): not primed")
+            bluetoothManager.writeResponse(data: Data(), status: .invalidState, params.responseParam)
+            return
+        }
+
         let basalEntries = Int(params.data[18])
         var basalSchedule: [BasalItem] = []
         for i in 0 ..< basalEntries {
@@ -40,9 +51,12 @@ extension MedtrumKitPackets {
         let now = Date.now
         let state = params.pumpManager.state
         state.basal = basalSchedule
-        state.reservoirLevel = params.pumpManager.currentModel.index == 0 ? 200 : 300
-        // A new patch: a new id, its records from 1 on
-        state.activate(patchId: params.pumpManager.nextPatchId(), at: now)
+        // The reservoir holds what it was filled with
+        // A new patch: a new id - the one a base that restarted announced - its records from 1 on
+        let patchId = state.baseResetAt != nil ? state.patchId : params.pumpManager.nextPatchId()
+        state.baseResetAt = nil
+        state.activate(patchId: patchId, at: now)
+        params.pumpManager.patchFaults.update { $0.recordFaultNumber = nil }
         state.patchState = .active
         state.activatedAt = now
         params.pumpManager.notifyStateDidUpdate()
@@ -83,13 +97,22 @@ extension MedtrumKitPackets {
         response.append(params.pumpManager.state.recordLog.newestWritten.toData())
         response.append(UInt16(truncatingIfNeeded: params.pumpManager.state.patchId).toData())
 
-        params.pumpManager.state.patchState = .filled
-        params.pumpManager.state.reservoirLevel = params.pumpManager.currentModel.index == 0 ? 200 : 300
-        params.pumpManager.state.suspendedSince = nil
-        params.pumpManager.state.tempBasalStart = nil
-        params.pumpManager.state.tempBasalRate = nil
-        params.pumpManager.state.tempBasalDuration = nil
-        params.pumpManager.notifyStateDidUpdate()
+        // The old patch may go on answering a while - stopped, its id and records - before the base is on a new one
+        let lingers = params.pumpManager.patchFaults.current.stoppedPatchSeconds
+        if params.pumpManager.state.isFillable {
+            // Already a new patch, being filled: a stop sent again leaves it as it is
+            logger.info("StopPatch with no patch running: the new patch is left as it is")
+        } else if lingers > 0 {
+            let state = params.pumpManager.state
+            state.patchState = .stopped
+            state.suspendedSince = nil
+            state.suspendedDuration = nil
+            state.stoppedPatchUntil = Date.now.addingTimeInterval(lingers)
+            logger.warning("[FAULT] The stopped patch goes on answering for \(Int(lingers)) s, then the base is on a new one")
+            params.pumpManager.notifyStateDidUpdate()
+        } else {
+            params.pumpManager.putNewPatch()
+        }
 
         bluetoothManager.writeResponse(
             data: response,
@@ -97,6 +120,26 @@ extension MedtrumKitPackets {
             params.responseParam
         )
         logger.info("Processed Deactivate message!")
+    }
+
+    /// SetPatch: the patch's settings - alarm setting (1), hourly and daily maximum (2 each), expiration timer (1), then
+    /// five auto-mode values nobody uses. Answered with nothing but success, as MedtrumKit and AndroidAPS read it.
+    static func parseSetPatchPacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        guard params.data.count >= 10 else {
+            logger.warning("SetPatch message too short: \(params.data.hexString())")
+            bluetoothManager.writeResponse(data: Data(), status: .invalidState, params.responseParam)
+            return
+        }
+
+        let state = params.pumpManager.state
+        state.alarmSettings = AlarmSettings(rawValue: params.data[4]) ?? state.alarmSettings
+        state.hourlyMaxInsulin = params.data.toUInt16(offset: 5)
+        state.dailyMaxInsulin = params.data.toUInt16(offset: 7)
+        state.expirationTimer = params.data[9]
+        params.pumpManager.notifyStateDidUpdate()
+
+        bluetoothManager.writeResponse(data: Data(), status: .ok, params.responseParam)
+        logger.info("Processed SetPatch message!")
     }
 
     static func parseClearAlertPacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {

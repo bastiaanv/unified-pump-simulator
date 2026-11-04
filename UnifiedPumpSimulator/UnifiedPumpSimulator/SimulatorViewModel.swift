@@ -41,13 +41,6 @@ class SimulatorViewModel: ObservableObject {
     private var assertionID: IOPMAssertionID = 0
     private var sleepDisabled = false
 
-    let integerFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .decimal
-        formatter.maximumFractionDigits = 0
-        return formatter
-    }()
-
     let basalFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.numberStyle = .decimal
@@ -138,7 +131,7 @@ extension SimulatorViewModel: StorageDelegate {
         DispatchQueue.main.async {
             self.pumpNotes = self.pumpManager.pumpNotes
             self.pumpState = self.pumpManager.pumpState
-            self.reservoirLevel = self.integerFormatter.string(from: pumpManager.reservoirLevel as NSNumber) ?? "0"
+            self.reservoirLevel = self.basalFormatter.string(from: pumpManager.reservoirLevel as NSNumber) ?? "0"
             self.bolusProgress = self.pumpManager.bolusProgress
             self.listRows = Dictionary(uniqueKeysWithValues: self.pumpManagerLists.map { ($0.id, $0.rows()) })
             self.stateRevision &+= 1

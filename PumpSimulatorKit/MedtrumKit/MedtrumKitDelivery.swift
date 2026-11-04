@@ -7,9 +7,16 @@ import Foundation
 /// the patch then writes its record. A suspended span has no record of its own. What follows is modelled on real
 /// patches' records and answers as MedtrumKit's and AndroidAPS's `GetRecordPacket` read them:
 /// - a temp basal set over the schedule writes the schedule's record, its cancel the temp basal's, both SUCCESS;
-/// - a suspend writes the running segment's record (SUSPEND_MANUAL), then an ALARM record; a resume starts the
-///   schedule again and writes an AUTO3 record;
-/// - at midnight the running segment is split, then a type 10 record and the day's TDD are written.
+/// - a suspend writes the running segment's record (SUSPEND_MANUAL), then an ALARM record (bit 4); a resume starts the
+///   schedule again and writes a RESUMED record;
+/// - a halt writes the record of a bolus it cut, the running segment's (ended by the halt's reason), at a fault a
+///   DAILY record, then an ALARM record of the halt's bit - running dry: STOP_EMPTY, DAILY, ALARM bit 8;
+/// - at midnight the running segment is split, then a DAILY record and the day's TDD are written;
+/// - the reservoir going below `lowReservoirWarning` writes an ALARM record (bit 2), every 8 h the base writes its
+///   counters (BASE).
+///
+/// Delivery drains the reservoir: `reservoirLevel` is what was left as the running segment started, less the boluses
+/// that ended since; `insulinLeft` takes off the running segment and bolus too. Empty, the patch halts (state 98).
 ///
 /// Everything here runs on the pump manager's queue (`MedtrumKitPumpManager.queue`).
 extension MedtrumKitState {
@@ -21,6 +28,11 @@ extension MedtrumKitState {
     /// Active or suspended: past setup, not halted or stopped
     var isPatchRunning: Bool {
         isDeliveringBasal || patchState.isSuspended || patchState == .paused
+    }
+
+    /// Before priming: the reservoir is filled then, and only then
+    var isFillable: Bool {
+        patchState.rawValue < PatchState.priming.rawValue
     }
 
     var isBolusRunning: Bool {
@@ -41,6 +53,24 @@ extension MedtrumKitState {
         }
 
         return tempBasalStart.addingTimeInterval(tempBasalDuration)
+    }
+
+    /// Below this the patch raises its low reservoir warning (alarm bit 2): jbr7rr/MedtrumKit#217, record 1340, was
+    /// written as the reservoir went from 20.05 to 19.95 U (MedtrumKit's EventRecordTests)
+    static let lowReservoirWarning: Double = 20
+
+    /// What is left in the reservoir at `date` - the running segment and bolus taken off
+    func insulinLeft(at date: Date = .now) -> Double {
+        let segment = isDeliveringBasal ? segmentDelivered(until: date) : 0
+        return max(0, Self.roundToSteps(reservoirLevel - segment - (bolusProgress ?? 0)))
+    }
+
+    /// What the reservoir holds for the running bolus at `date`, in whole 0.05 U steps - the running segment taken off
+    /// - and never below what the bolus was reported to have delivered already
+    func insulinForBolus(at date: Date) -> Double {
+        let segment = isDeliveringBasal ? segmentDelivered(until: date) : 0
+        let steps = (max(0, reservoirLevel - segment) / 0.05 + 1E-9).rounded(.down)
+        return max(steps * 0.05, bolusProgress ?? 0)
     }
 
     /// What the running segment has delivered since it started, in the patch's 0.05 U steps
@@ -87,7 +117,7 @@ extension MedtrumKitState {
         patchState = .suspended
         suspendedSince = date
         suspendedDuration = duration
-        appendRecord(.other(type: MedtrumKitRecord.typeAlarm), at: date)
+        appendAlarm(MedtrumKitRecord.alarmSuspended, at: date)
     }
 
     /// ResumePump, or a suspend running out: the schedule again, a temp basal before it is gone for good
@@ -98,17 +128,63 @@ extension MedtrumKitState {
         clearTempBasal()
 
         startSegment(at: date)
-        appendRecord(.other(type: MedtrumKitRecord.typeAuto3), at: date)
+        appendRecord(.resumed, at: date)
     }
 
-    /// The patch stops delivering on its own: an occlusion, the hourly maximum, ... A running bolus is ended first by
-    /// the caller (`MedtrumKitPackets.endBolus`), which owns its timer.
+    /// The patch stops delivering on its own: an occlusion, the hourly maximum, running dry, ... A running bolus is
+    /// ended first by the caller (`MedtrumKitPackets.endBolus`, or `runDry`), which owns its timer.
     func halt(_ haltState: PatchState, reason: BasalEndReason, at date: Date) {
         endSegment(at: date, reason: reason)
         clearTempBasal()
+        suspendedSince = nil
+        suspendedDuration = nil
 
         patchState = haltState
-        appendRecord(.other(type: MedtrumKitRecord.typeAlarm), at: date)
+        haltedAs = haltState
+        // A fault - not a suspend for the hourly or daily maximum - writes a DAILY record first
+        if !haltState.isSuspended {
+            appendRecord(.daily(MedtrumKitRecord.Daily(timeZoneOffset: zoneOffset(at: date))), at: date)
+        }
+        appendAlarm(Self.alarmBit(of: haltState), at: date)
+    }
+
+    /// The alarm bit a halt in `haltState` raises
+    static func alarmBit(of haltState: PatchState) -> UInt8 {
+        switch haltState {
+        case .occlusion: MedtrumKitRecord.alarmOcclusion
+        case .reservoirEmpty: MedtrumKitRecord.alarmReservoirEmpty
+        default: MedtrumKitRecord.alarmSuspended
+        }
+    }
+
+    /// The reservoir is empty at `date`: a running bolus is cut there, then the patch halts (state 98). The pump
+    /// manager tells the phone (`haltNotice`).
+    func runDry(at date: Date) {
+        var cut: Double?
+        if isBolusRunning {
+            let delivered = bolusProgress ?? 0
+            finishBolus(delivered: delivered, cause: MedtrumKitPackets.bolusInterrupted, at: date)
+            cut = delivered
+        }
+
+        halt(.reservoirEmpty, reason: .STOP_EMPTY, at: date)
+        reservoirLevel = 0
+        haltNotice = HaltNotice(cutBolus: cut)
+    }
+
+    /// Nothing is delivered or running any more - no bolus, temp basal, suspend or priming - and nothing is still to
+    /// be told: a new patch, a base that restarted, priming
+    func clearDelivery() {
+        clearTempBasal()
+        suspendedSince = nil
+        suspendedDuration = nil
+        bolusAnsweredNumber = nil
+        bolusStart = nil
+        bolusTotal = nil
+        bolusProgress = nil
+        primeProgress = nil
+        haltNotice = nil
+        stoppedPatchUntil = nil
     }
 
     /// StopPatch: what was running ends here. A running bolus is ended first by the caller.
@@ -123,14 +199,11 @@ extension MedtrumKitState {
         self.patchId = patchId
         updateRecordLog { $0.reset() }
         appendRecord(.other(type: MedtrumKitRecord.typeTimeSync), at: date)
+        lowReservoirAlarmed = false
+        haltedAs = nil
+        baseCountersAt = date
 
-        clearTempBasal()
-        suspendedSince = nil
-        suspendedDuration = nil
-        bolusAnsweredNumber = nil
-        bolusStart = nil
-        bolusTotal = nil
-        bolusProgress = nil
+        clearDelivery()
         lastBolusDelivered = 0
         lastBolusCause = 0
 
@@ -196,6 +269,7 @@ extension MedtrumKitState {
                 at: date
             )
             dayBolus += delivered
+            drain(delivered)
         }
 
         lastBolusDelivered = delivered
@@ -225,6 +299,20 @@ extension MedtrumKitState {
             let date = next.date
 
             switch next.event {
+            case .reservoirEmpty:
+                runDry(at: date)
+
+            case .baseCounters:
+                baseCountersAt = date
+                appendRecord(
+                    .baseCounters(MedtrumKitRecord.BaseCounters(
+                        lifetimeSteps: UInt32(clamping: baseLifetimeSteps),
+                        operatingHours: UInt16(clamping: Int(date.timeIntervalSince(activatedAt ?? date) / 3600)),
+                        patchesUsed: UInt16(truncatingIfNeeded: patchId)
+                    )),
+                    at: date
+                )
+
             case .tempBasalEnds:
                 endSegment(at: date, reason: .SUCCESS)
                 clearTempBasal()
@@ -244,7 +332,22 @@ extension MedtrumKitState {
             changed = true
         }
 
+        if noteLowReservoir(at: now) {
+            changed = true
+        }
+
         return changed
+    }
+
+    /// The reservoir went below the warning level: an ALARM record (bit 2), once per patch. Whether it was written.
+    @discardableResult func noteLowReservoir(at date: Date) -> Bool {
+        guard !lowReservoirAlarmed, isPatchRunning, insulinLeft(at: date) < Self.lowReservoirWarning else {
+            return false
+        }
+
+        lowReservoirAlarmed = true
+        appendAlarm(MedtrumKitRecord.alarmLowReservoir, at: date)
+        return true
     }
 
     private enum TimedEvent {
@@ -252,6 +355,8 @@ extension MedtrumKitState {
         case suspensionEnds
         case scheduleBlock
         case midnight
+        case reservoirEmpty
+        case baseCounters
     }
 
     private func nextEvent() -> (date: Date, event: TimedEvent)? {
@@ -264,6 +369,24 @@ extension MedtrumKitState {
                 // A temp basal runs across blocks of the schedule, the schedule itself is split at each
                 events.append((block, .scheduleBlock))
             }
+
+            // The segment runs at one rate - a schedule's is split at each block - so it drains what is left in a time
+            // of its own. While a bolus runs, running dry is the bolus timer's (`MedtrumKitPackets.scheduleBolus`): it
+            // cuts the bolus at what is left. Never before the newest record: a bolus that emptied it exactly ended
+            // after the time that gives, and the basal runs dry there.
+            if !isBolusRunning {
+                let notBefore = max(basalSince, recordLog.records.last?.writtenAt ?? basalSince)
+                if reservoirLevel <= 0 {
+                    events.append((notBefore, .reservoirEmpty))
+                } else if segmentRate > 0 {
+                    let empty = basalSince.addingTimeInterval(reservoirLevel / segmentRate * 3600)
+                    events.append((max(notBefore, empty), .reservoirEmpty))
+                }
+            }
+        }
+
+        if isPatchRunning, let since = baseCountersAt ?? activatedAt {
+            events.append((since.addingTimeInterval(.hours(8)), .baseCounters))
         }
 
         if patchState == .suspended, let suspendedSince, let suspendedDuration {
@@ -297,7 +420,7 @@ extension MedtrumKitState {
             let minutes = UInt16(max(0, min(1440, date.timeIntervalSince(runningSince) / 60)))
             let offset = calendar.timeZone.secondsFromGMT(for: dayStart) / 60
 
-            appendRecord(.other(type: MedtrumKitRecord.typeMidnight), at: date)
+            appendRecord(.daily(MedtrumKitRecord.Daily(timeZoneOffset: offset)), at: date)
             appendRecord(
                 .tdd(MedtrumKitRecord.Tdd(
                     dayStart: dayStart,
@@ -317,13 +440,16 @@ extension MedtrumKitState {
 
     // MARK: - Segments
 
-    /// Writes the record of the running segment, ending at `date`
+    /// Writes the record of the running segment, ending at `date`. A temp basal ended by running dry may claim more
+    /// than it delivered (`emptyRecordExtra`), as real patches' records do: the record and the day's total count the
+    /// claim, the reservoir what was delivered.
     private func endSegment(at date: Date, reason: BasalEndReason) {
         guard isDeliveringBasal else {
             return
         }
 
         let delivered = segmentDelivered(until: date)
+        let claimed = reason == .STOP_EMPTY && tempBasalRate != nil ? Self.roundToSteps(delivered + emptyRecordExtra) : delivered
         appendRecord(
             .basal(MedtrumKitRecord.Basal(
                 type: segmentType.rawValue,
@@ -331,11 +457,28 @@ extension MedtrumKitState {
                 start: basalSince,
                 end: date,
                 rate: segmentRate,
-                delivered: delivered
+                delivered: claimed
             )),
             at: date
         )
-        dayBasal += delivered
+        dayBasal += claimed
+        drain(delivered)
+    }
+
+    /// `units` left the reservoir: a segment or a bolus ended
+    private func drain(_ units: Double) {
+        reservoirLevel = max(0, Self.roundToSteps(reservoirLevel - units))
+        baseLifetimeSteps += Int((units / 0.05).rounded())
+    }
+
+    private func appendAlarm(_ bit: UInt8, at date: Date) {
+        let age = UInt32(clamping: Int(max(0, date.timeIntervalSince(activatedAt ?? date))))
+        appendRecord(.alarm(MedtrumKitRecord.Alarm(bit: bit, patchAge: age)), at: date)
+    }
+
+    /// The patch's offset from UTC in minutes at `date`
+    private func zoneOffset(at date: Date) -> Int {
+        calendar.timeZone.secondsFromGMT(for: date) / 60
     }
 
     private func startSegment(at date: Date) {

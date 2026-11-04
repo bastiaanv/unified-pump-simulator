@@ -15,6 +15,9 @@ extension MedtrumKitBluetoothManager {
         var applied = false
         /// Answered late: the answer, then the statuses the command pushed, sent together when it is due
         var late: LateWrites?
+        /// Taking the answer for a halt armed on the command (`armHalt`), not a fault of `MedtrumKitCommandFaults`:
+        /// nothing there is used up by it
+        var forHalt = false
     }
 
     /// What an answer held back late sends when it is due, in order
@@ -30,6 +33,9 @@ extension MedtrumKitBluetoothManager {
 
         let name = MedtrumKitCommandFaults.name(of: command)
         logger.warning("[FAULT] \(name) not executed and not answered (\(fault.description))")
+        if pumpManagerDelegate?.patchFaults.current.haltCommand == command {
+            logger.warning("[FAULT] \(name) never reached the patch: the halt armed on it stays armed")
+        }
         markUsed(fault, for: command)
         return true
     }
@@ -60,7 +66,7 @@ extension MedtrumKitBluetoothManager {
         }
 
         commandFault = nil
-        if pending.applied {
+        if pending.applied, !pending.forHalt {
             markUsed(pending.fault, for: pending.command)
         }
     }
@@ -84,6 +90,10 @@ extension MedtrumKitBluetoothManager {
 
         guard status == .ok else {
             commandFault = nil
+            // A halt's: `haltAfter` tells
+            if pending.forHalt {
+                return false
+            }
             logger.warning(
                 "[FAULT] \(name) rejected by the patch (\(status)), answered as usual: \(fault.description) not applied" +
                     (fault.once ? ", still armed" : "")
@@ -106,6 +116,7 @@ extension MedtrumKitBluetoothManager {
             commandFault?.late = late
 
             let heldInSession = session
+            let heldInGeneration = pumpManagerDelegate?.patchFaults.generation
             pumpBluetoothManager.managerQueue.asyncAfter(deadline: .now() + fault.seconds) { [weak self] in
                 guard let self else {
                     return
@@ -113,6 +124,11 @@ extension MedtrumKitBluetoothManager {
 
                 guard session == heldInSession else {
                     logger.warning("[FAULT] late answer dropped: \(name)'s, the session it was held back in is over")
+                    return
+                }
+
+                guard pumpManagerDelegate?.patchFaults.generation == heldInGeneration else {
+                    logger.warning("[FAULT] late answer dropped: \(name)'s, the faults were disarmed since")
                     return
                 }
 
@@ -159,6 +175,64 @@ extension MedtrumKitBluetoothManager {
             logger.warning("[FAULT] \(name): the status it pushed is lost with its answer: \(data.hexString())")
         }
         return true
+    }
+
+    /// A halt armed on a command that just came in, if any: if its answer is to be lost with it, the command gets a
+    /// fault taking the answer (and any status it pushes) in place of one armed for it
+    func armHalt(for command: UInt8) -> PatchFaultSettings? {
+        guard let settings = pumpManagerDelegate?.patchFaults.current, settings.haltCommand == command else {
+            return nil
+        }
+
+        // One that drops the command never gets here (`takeNotExecutedFault`)
+        if let fault = pumpManagerDelegate?.commandFaults.armed(for: command) {
+            logger.warning(
+                "[FAULT] \(MedtrumKitCommandFaults.name(of: command)): the halt armed on it takes its place, " +
+                    "\(fault.mode.title) is not applied and stays armed"
+            )
+        }
+
+        if settings.haltLosesAnswer {
+            commandFault = PendingCommandFault(
+                command: command,
+                fault: CommandFault(mode: .executedNoAnswer, once: true),
+                forHalt: true
+            )
+        }
+        return settings
+    }
+
+    /// The command was executed: the patch halts if it answered it with success - the halt's status going out, the
+    /// answer before it or lost. A command it rejected leaves the halt armed.
+    func haltAfter(_ command: UInt8, _ settings: PatchFaultSettings) {
+        let name = MedtrumKitCommandFaults.name(of: command)
+        guard let lastAnswer, lastAnswer.command == command, lastAnswer.status == .ok else {
+            logger.warning("[FAULT] \(name) not executed with success: the halt armed on it stays armed")
+            return
+        }
+
+        logger.warning(
+            "[FAULT] The patch halts (\(settings.haltKind.title)) as it executes \(name)" +
+                (settings.haltLosesAnswer ? ", its answer lost" : ", right after its answer")
+        )
+        // Used up only by a halt that happened
+        if pumpManagerDelegate?.haltNow(settings.haltKind) == true {
+            pumpManagerDelegate?.patchFaults.update { $0.haltCommand = nil }
+            pumpManagerDelegate?.notifyStateDidUpdate()
+        } else {
+            logger.warning("[FAULT] \(name): the patch did not halt, the halt armed on it stays armed")
+        }
+    }
+
+    /// A silent link speaks again now
+    func endSilence() {
+        guard linkSilentUntil != nil else {
+            return
+        }
+
+        linkSilentUntil = nil
+        logger.warning("[FAULT] Link no longer silent: the next status tells the patch's state")
+        pumpManagerDelegate?.notifyStateDidUpdate()
     }
 
     /// The link goes silent for `seconds`: nothing is sent - answers, statuses - and what the phone sends is lost. The

@@ -17,6 +17,14 @@ extension MedtrumKitBluetoothManager {
     }
 
     func writeResponse(data: Data, status: ResponseStatus, _ params: WriteResponseParam) {
+        if status != .stateUpdate {
+            lastAnswer = (params.responseCode, status)
+        } else if pumpManagerDelegate?.patchFaults.current.isStatusGap == true {
+            // A status gap: the patch sends no notification, it answers - a Synchronize too
+            logger.warning("[FAULT] Status gap: notification not sent: \(data.hexString())")
+            return
+        }
+
         let messages = encodePacket(data, status: status, params.responseCode, params.messageId)
 
         // The answer to a command a fault is armed for may be held back or dropped, and a status the command pushes
