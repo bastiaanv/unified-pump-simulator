@@ -201,6 +201,15 @@ extension MedtrumKitPumpManager {
                 }
             })]
         ),
+        Scenario(
+            name: "Off-table amounts",
+            detail: "Nothing to arm. Have the app set a temp basal off the patch's 0.05 U/h steps - 1.08 U/h, as " +
+                "Trio's low temps are - and read Doses received: the steps that arrived (21, 1.05 U/h, from a " +
+                "driver that floors) and the steps the statuses then carry. A bolus of no steps or over 30 U, a " +
+                "temp basal above the base's maximum (25 U/h on the 200U, 30 on the 300U) or of 0 min is refused " +
+                "with code 8.",
+            buttons: []
+        ),
     ]
 
     func scenarioControls() -> PumpManagerControlGroup {

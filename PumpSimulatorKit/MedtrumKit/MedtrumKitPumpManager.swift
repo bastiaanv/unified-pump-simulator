@@ -45,6 +45,7 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         var linkSilentUntil: Date?
         /// What the running bolus does beyond the patch's pace (`BolusRun`)
         var runningBolusFault: String?
+        var receivedDoseRows: [[String]] = []
     }
 
     private let snapshotLock = NSLock()
@@ -126,7 +127,8 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
             recordRows: recordRows(),
             stoppedPatchUntil: state.stoppedPatchUntil,
             linkSilentUntil: bluetooth.linkSilentUntil,
-            runningBolusFault: MedtrumKitPackets.bolusRun?.faultDescription
+            runningBolusFault: MedtrumKitPackets.bolusRun?.faultDescription,
+            receivedDoseRows: receivedDoseRows()
         )
         snapshotLock.withLock { _snapshot = snapshot }
     }
@@ -142,6 +144,9 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
     var isRunning: Bool = false
     let commandFaults = MedtrumKitCommandFaults()
     let patchFaults = MedtrumKitPatchFaults()
+    /// The newest SetBolus and SetTempBasal commands received, and what the patch did with them - on the queue, not
+    /// saved
+    var receivedDoses: [ReceivedDose] = []
 
     /// The queue the patch's state is changed on
     var queue: DispatchQueue {
@@ -206,6 +211,7 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         capabilities.controlGroups.append(bolusFaultControls())
         capabilities.lists.append(armedFaultList())
         capabilities.lists.append(recordList())
+        capabilities.lists.append(receivedDoseList())
 
         bluetooth.pumpManagerDelegate = self
         refreshSnapshot()

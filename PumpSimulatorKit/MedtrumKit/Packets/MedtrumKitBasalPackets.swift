@@ -98,7 +98,22 @@ extension MedtrumKitPackets {
     }
 
     static func parseTempBasalPacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        // The rate in the patch's 0.05 U/h steps, all the command carries, and the minutes
+        let steps = params.data.toUInt16(offset: 5)
+        let duration = params.data.toUInt16(offset: 7)
+        let refuse = { (why: String) in
+            params.pumpManager.noteReceivedDose(
+                "SetTempBasal",
+                steps: steps,
+                unit: "U/h",
+                minutes: duration,
+                result: "refused (code 8): \(why)"
+            )
+            params.pumpManager.notifyStateDidUpdate()
+        }
+
         guard params.pumpManager.state.patchState == .active else {
+            refuse("the patch is \(params.pumpManager.state.patchState.title)")
             logger.warning("Rejecting temp basal during non-active state...")
             bluetoothManager.writeResponse(
                 data: Data(),
@@ -110,16 +125,34 @@ extension MedtrumKitPackets {
 
         let currentRate = params.pumpManager.state.currentBaseBasalRate
         guard currentRate > 0 else {
+            refuse("no basal schedule")
             bluetoothManager.writeResponse(data: Data(), status: .invalidState, params.responseParam)
             logger.info("Cannot set temp basal without basal")
             return
         }
 
-        let rate = Double(params.data.toUInt16(offset: 5)) * 0.05
-        let duration = params.data.toUInt16(offset: 7)
+        // Above the base's maximum, or for no time: refused as real patches refuse a command they can't run - what a
+        // real one answers to these is not on record. A rate of 0 is a zero temp, taken.
+        let maximum = params.pumpManager.maximumTempBasalSteps
+        guard steps <= maximum, duration > 0 else {
+            let why = duration == 0 ? "no duration" : "above the \(String(format: "%g", Double(maximum) * 0.05)) U/h maximum"
+            refuse(why)
+            logger.warning("Rejecting a temp basal of \(steps) steps for \(duration) min: \(why)")
+            bluetoothManager.writeResponse(data: Data(), status: .invalidState, params.responseParam)
+            return
+        }
+
+        let rate = Double(steps) * 0.05
 
         let state = params.pumpManager.state
         state.setTempBasal(rate: rate, duration: TimeInterval(minutes: Double(duration)), at: .now)
+        params.pumpManager.noteReceivedDose(
+            "SetTempBasal",
+            steps: steps,
+            unit: "U/h",
+            minutes: duration,
+            result: "running: statuses and its record carry \(UInt16((state.segmentRate / 0.05).rounded())) steps"
+        )
         params.pumpManager.notifyStateDidUpdate()
 
         // The temp basal that started, and the record of the segment it ended

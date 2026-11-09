@@ -11,7 +11,15 @@ extension MedtrumKitPackets {
     static let bolusInterrupted: UInt8 = 9
 
     static func startBolus(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        // The amount in the patch's 0.05 U steps: all the command carries
+        let steps = params.data.toUInt16(offset: 5)
+        let refuse = { (why: String) in
+            params.pumpManager.noteReceivedDose("SetBolus", steps: steps, unit: "U", result: "refused (code 8): \(why)")
+            params.pumpManager.notifyStateDidUpdate()
+        }
+
         guard params.pumpManager.state.patchState == .active else {
+            refuse("the patch is \(params.pumpManager.state.patchState.title)")
             logger.warning("Attempted startBolus during non-active state...")
             bluetoothManager.writeResponse(
                 data: Data(),
@@ -23,12 +31,22 @@ extension MedtrumKitPackets {
 
         // One bolus at a time: the running one's record is still to be written
         guard !params.pumpManager.state.isBolusRunning else {
+            refuse("a bolus is running")
             logger.warning("Attempted startBolus while a bolus is running...")
             bluetoothManager.writeResponse(data: Data(), status: .invalidState, params.responseParam)
             return
         }
 
-        let amount = Double(params.data.toUInt16(offset: 5)) * 0.05
+        // Nothing to deliver, or more than the patch takes: refused as real patches refuse a command they can't run -
+        // what a real one answers to these is not on record
+        guard steps > 0, steps <= MedtrumKitPumpManager.maximumBolusSteps else {
+            refuse(steps == 0 ? "no amount" : "above the 30 U maximum")
+            logger.warning("Rejecting a bolus of \(steps) steps: the patch takes 1 to \(MedtrumKitPumpManager.maximumBolusSteps)")
+            bluetoothManager.writeResponse(data: Data(), status: .invalidState, params.responseParam)
+            return
+        }
+
+        let amount = Double(steps) * 0.05
         let state = params.pumpManager.state
         let startTime = Date.now
         let recordNumber = state.startBolus(amount: amount, at: startTime)
@@ -75,6 +93,12 @@ extension MedtrumKitPackets {
         }
         // A real patch has delivered its first pulse by the time it answers
         state.bolusProgress = min(amount, 0.05)
+        params.pumpManager.noteReceivedDose(
+            "SetBolus",
+            steps: steps,
+            unit: "U",
+            result: "started, its answer names record #\(recordNumber)"
+        )
         params.pumpManager.notifyStateDidUpdate()
 
         // The record number the bolus gets if the patch writes nothing else before it ends, and when it started
