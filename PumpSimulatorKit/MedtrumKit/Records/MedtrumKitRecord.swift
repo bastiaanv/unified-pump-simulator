@@ -124,9 +124,20 @@ struct MedtrumKitRecord: Codable, Identifiable {
     }
 
     /// The GET_RECORD answer body (after the response code) carrying this record. `corruptCrc`: its CRC off by one, as a
-    /// record damaged on the way would be.
-    func encode(serial: UInt32, patchId: UInt32, corruptCrc: Bool = false) -> Data {
+    /// record damaged on the way would be. `truncated`: at most 8 bytes of its payload, no CRC - shorter than any record
+    /// type's fields MedtrumKit reads (a TDD's half would still parse) - its length byte as for the whole record.
+    func encode(serial: UInt32, patchId: UInt32, corruptCrc: Bool = false, truncated: Bool = false) -> Data {
         let payload = payload
+        if truncated {
+            return Self.header(
+                valid: true,
+                length: payload.count,
+                type: recordType,
+                serial: serial,
+                patchId: patchId,
+                number: number
+            ) + payload.prefix(min(payload.count / 2, 8))
+        }
         let record = Self.header(
             valid: true,
             length: payload.count,

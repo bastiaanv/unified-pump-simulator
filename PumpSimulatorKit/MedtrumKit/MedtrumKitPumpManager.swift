@@ -209,6 +209,7 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         capabilities.controlGroups.append(commandFaultControls())
         capabilities.controlGroups.append(patchFaultControls())
         capabilities.controlGroups.append(bolusFaultControls())
+        capabilities.controlGroups.append(recordHistoryControls())
         capabilities.lists.append(armedFaultList())
         capabilities.lists.append(recordList())
         capabilities.lists.append(receivedDoseList())

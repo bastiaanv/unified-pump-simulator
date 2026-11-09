@@ -41,7 +41,8 @@ extension MedtrumKitPumpManager {
             ),
             PumpManagerControlRow(
                 label: "Record read",
-                detail: "What a GetRecord answers instead of the record. Once, or every read of the record it hits.",
+                detail: "What a GetRecord answers instead of the record. Once, or every read of the record it hits. " +
+                    "\"Record number set\": the number under Record history.",
                 controls: [
                     .picker(
                         "Which",

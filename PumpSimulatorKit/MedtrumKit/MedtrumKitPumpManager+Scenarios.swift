@@ -210,6 +210,47 @@ extension MedtrumKitPumpManager {
                 "with code 8.",
             buttons: []
         ),
+        Scenario(
+            name: "Patch history",
+            detail: "Change the patch: it activates holding 300 records - temp basals, the schedule, boluses, dated " +
+                "over the days before - its time sync #301. The driver's first sync reads the newest 20; #1 to #281 " +
+                "are below its cursor, for its history screen to read. \"With a ring\": the patch keeps its newest " +
+                "200, a GetRecord for an older number is answered with the record now in its slot.",
+            buttons: [
+                ("Arm", { pumpManager in pumpManager.armHistory() }),
+                ("With a ring", { pumpManager in
+                    pumpManager.armHistory {
+                        $0.ringEnabled = true
+                        $0.ringCapacity = 200
+                        $0.ringAnswer = .staleSlot
+                    }
+                }),
+            ]
+        ),
+        Scenario(
+            name: "Patch history, records unreadable",
+            detail: "Change the patch: it activates holding 300 records, as above. \"Ring errors\": the patch keeps " +
+                "its newest 200, a GetRecord for an older number is answered with code 8. \"#10 truncated\": every " +
+                "read of #10 is cut short, no CRC.",
+            buttons: [
+                ("Ring errors", { pumpManager in
+                    pumpManager.armHistory {
+                        $0.ringEnabled = true
+                        $0.ringCapacity = 200
+                        $0.ringAnswer = .error
+                    }
+                }),
+                ("#10 truncated", { pumpManager in
+                    pumpManager.armHistory {
+                        $0.recordTarget = .number
+                        $0.recordTargetNumber = 10
+                        $0.recordFault = .truncated
+                        $0.recordFaultSticks = true
+                        $0.recordFaultNumber = nil
+                    }
+                }),
+            ]
+        ),
     ]
 
     func scenarioControls() -> PumpManagerControlGroup {
@@ -298,6 +339,15 @@ extension MedtrumKitPumpManager {
             stall.alarm = .none
             configure(&stall)
             settings.bolusStall = stall
+        }
+    }
+
+    /// 300 records at the next activation, then `configure`
+    private func armHistory(_ configure: (inout PatchFaultSettings) -> Void = { _ in }) {
+        patchFaults.update { settings in
+            settings.preloadAtActivation = true
+            settings.preloadCount = 300
+            configure(&settings)
         }
     }
 

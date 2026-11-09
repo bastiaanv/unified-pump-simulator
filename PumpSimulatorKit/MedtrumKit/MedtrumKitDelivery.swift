@@ -194,10 +194,20 @@ extension MedtrumKitState {
     }
 
     /// A new patch: a new id (`MedtrumKitPumpManager.nextPatchId`), and records from 1 on - the first one a time
-    /// sync, as on real patches
-    func activate(patchId: UInt32, at date: Date) {
+    /// sync, as on real patches. `history`: records it holds already, written before the time sync - a fixture, the
+    /// past of a patch adopted from another phone (`MedtrumKitRecordFixtures`).
+    func activate(
+        patchId: UInt32,
+        at date: Date,
+        history: [(kind: MedtrumKitRecord.Kind, writtenAt: Date)] = []
+    ) {
         self.patchId = patchId
-        updateRecordLog { $0.reset() }
+        updateRecordLog { log in
+            log.reset()
+            for record in history {
+                log.append(record.kind, at: record.writtenAt)
+            }
+        }
         appendRecord(.other(type: MedtrumKitRecord.typeTimeSync), at: date)
         lowReservoirAlarmed = false
         haltedAs = nil

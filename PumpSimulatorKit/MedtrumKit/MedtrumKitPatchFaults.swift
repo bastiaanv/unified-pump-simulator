@@ -24,6 +24,8 @@ enum RecordReadFault: Int, CaseIterable {
     case badCrc
     /// The record, with another patch's id in its header
     case otherPatchId
+    /// The record cut short - at most 8 bytes of its payload - no CRC
+    case truncated
 
     var title: String {
         switch self {
@@ -31,6 +33,7 @@ enum RecordReadFault: Int, CaseIterable {
         case .emptySlot: "Empty slot"
         case .badCrc: "Bad CRC"
         case .otherPatchId: "Another patch's id"
+        case .truncated: "Truncated"
         }
     }
 }
@@ -40,23 +43,43 @@ enum RecordReadTarget: Int, CaseIterable {
     case any
     case bolus
     case basal
+    /// The record of the number set (`PatchFaultSettings.recordTargetNumber`)
+    case number
 
     var title: String {
         switch self {
         case .any: "Next record read"
         case .bolus: "Next bolus record read"
         case .basal: "Next basal record read"
+        case .number: "Record number set"
         }
     }
 
-    func matches(_ record: MedtrumKitRecord) -> Bool {
+    func matches(_ record: MedtrumKitRecord, number: Int) -> Bool {
         switch (self, record.kind) {
         case (.any, _),
              (.basal, .basal),
              (.bolus, .bolus):
             true
+        case (.number, _):
+            Int(record.number) == number
         default:
             false
+        }
+    }
+}
+
+/// What the patch answers a GET_RECORD for a number its record ring no longer holds
+enum RecordRingAnswer: Int, CaseIterable {
+    /// The record that took its slot: a newer one, its own number in it
+    case staleSlot
+    /// An error code (8)
+    case error
+
+    var title: String {
+        switch self {
+        case .staleSlot: "The record now in its slot"
+        case .error: "An error (code 8)"
         }
     }
 }
@@ -76,6 +99,17 @@ struct PatchFaultSettings {
     var recordFaultSticks = false
     /// The record a sticking fault hit
     var recordFaultNumber: UInt16?
+    /// The record a fault for a record number (`RecordReadTarget.number`) is for
+    var recordTargetNumber = 10
+
+    /// The next patch activated holds this many records already, dated before it - a fixture for a driver's history
+    var preloadAtActivation = false
+    var preloadCount = 300
+    /// The patch keeps its newest `ringCapacity` records only: a number older than that is answered with
+    /// `ringAnswer`
+    var ringEnabled = false
+    var ringCapacity = 200
+    var ringAnswer: RecordRingAnswer = .staleSlot
 
     /// How long a status gap lasts, and until when one runs: no notification goes out, answers - a Synchronize's
     /// too - do
@@ -148,6 +182,8 @@ final class MedtrumKitPatchFaults {
             settings.bolusStall.scope = .off
             settings.delayedOcclusion.scope = .off
             settings.pendingOcclusionAt = nil
+            settings.preloadAtActivation = false
+            settings.ringEnabled = false
         }
     }
 
@@ -209,12 +245,24 @@ final class MedtrumKitPatchFaults {
             ])
         }
         if settings.recordFault != .normal {
+            let target = settings.recordTarget == .number ? "the next read of #\(settings.recordTargetNumber)" :
+                settings.recordTarget.title
             let which = settings.recordFaultNumber.map { "every read of #\($0)" } ??
-                settings.recordTarget.title + (settings.recordFaultSticks ? ", then every read of it" : "")
+                target + (settings.recordFaultSticks ? ", then every read of it" : "")
             rows.append(["GetRecord", "\(which): \(settings.recordFault.title)"])
         }
         if let until = settings.statusGapUntil, until > .now {
             rows.append(["Statuses", "none sent until \(MedtrumKitPumpManager.timeFormatter.string(from: until))"])
+        }
+        if settings.preloadAtActivation {
+            rows.append(["Activate", "the next patch holds \(settings.preloadCount) records already"])
+        }
+        if settings.ringEnabled {
+            rows.append([
+                "GetRecord",
+                "the patch keeps its newest \(settings.ringCapacity) records: an older one is answered with " +
+                    settings.ringAnswer.title.lowercased(),
+            ])
         }
         if settings.stoppedPatchSeconds > 0 {
             rows.append(["StopPatch", "the old patch answers for \(Int(settings.stoppedPatchSeconds)) s after it"])

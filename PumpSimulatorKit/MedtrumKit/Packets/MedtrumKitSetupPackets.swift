@@ -55,7 +55,26 @@ extension MedtrumKitPackets {
         // A new patch: a new id - the one a base that restarted announced - its records from 1 on
         let patchId = state.baseResetAt != nil ? state.patchId : params.pumpManager.nextPatchId()
         state.baseResetAt = nil
-        state.activate(patchId: patchId, at: now)
+        // A fixture: the patch holds a past already
+        let preload = params.pumpManager.patchFaults.update { settings -> Int? in
+            guard settings.preloadAtActivation else {
+                return nil
+            }
+            settings.preloadAtActivation = false
+            return settings.preloadCount
+        }
+        let history = preload.map {
+            MedtrumKitRecordFixtures.history(
+                count: $0,
+                endingBefore: now,
+                scheduledRate: state.scheduledRate(at: now),
+                seed: UInt64(patchId)
+            )
+        } ?? []
+        if let preload {
+            logger.warning("[FAULT] The patch activates holding \(preload) records already, #1 to #\(preload)")
+        }
+        state.activate(patchId: patchId, at: now, history: history)
         params.pumpManager.patchFaults.update { $0.recordFaultNumber = nil }
         params.pumpManager.callOffPendingOcclusion("a new patch activated")
         state.patchState = .active
