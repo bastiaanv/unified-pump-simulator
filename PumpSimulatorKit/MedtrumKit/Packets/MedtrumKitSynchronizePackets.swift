@@ -5,7 +5,15 @@ extension MedtrumKitPackets {
     static var synchronizeTimer: DispatchSourceTimer?
 
     /// Sends a status update to the subscribed phone - nil while none is
-    private static var sendStatus: ((CompletedBolus?, Bool) -> Void)?
+    private static var sendStatus: ((StatusOptions) -> Void)?
+
+    /// What a notification carries beyond the patch's state
+    struct StatusOptions {
+        var completedBolus: CompletedBolus?
+        var haltNotification = false
+        /// No bolus field while a bolus runs: one of the patch's other packets between a stalled bolus's steps
+        var withoutBolusField = false
+    }
 
     /// A bolus that just ended, which the next notification tells of once
     struct CompletedBolus {
@@ -26,13 +34,14 @@ extension MedtrumKitPackets {
     static func scheduleUpdates(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
         synchronizeTimer?.cancel()
 
-        sendStatus = { completedBolus, haltNotification in
+        sendStatus = { options in
             params.pumpManager.advanceDelivery()
             bluetoothManager.writeResponse(
                 data: generateSynchronizePacket(
                     state: params.pumpManager.state,
-                    completedBolus: completedBolus,
-                    haltNotification: haltNotification
+                    completedBolus: options.completedBolus,
+                    haltNotification: options.haltNotification,
+                    withoutBolusField: options.withoutBolusField
                 ),
                 status: .stateUpdate,
                 params.updateParam
@@ -40,15 +49,29 @@ extension MedtrumKitPackets {
         }
 
         synchronizeTimer = repeatingTimer(on: params.pumpManager.queue, every: 30.0) {
-            sendStatus?(nil, false)
+            // A stalled bolus that sends nothing but its steps: no heartbeat either
+            if bolusRun?.holdsHeartbeats == true {
+                logger.warning("[FAULT] Bolus stall, steps only: heartbeat not sent")
+                return
+            }
+            sendStatus?(StatusOptions())
             logger.info("State update send!")
         }
     }
 
     /// A notification now, rather than at the next heartbeat - carrying the completion of a bolus that just ended.
     /// `haltNotification`: the one announcing that the patch ran dry (see `generateSynchronizePacket`).
-    static func sendStatusUpdate(completedBolus: CompletedBolus? = nil, haltNotification: Bool = false) {
-        sendStatus?(completedBolus, haltNotification)
+    /// `withoutBolusField`: no bolus field while a bolus runs.
+    static func sendStatusUpdate(
+        completedBolus: CompletedBolus? = nil,
+        haltNotification: Bool = false,
+        withoutBolusField: Bool = false
+    ) {
+        sendStatus?(StatusOptions(
+            completedBolus: completedBolus,
+            haltNotification: haltNotification,
+            withoutBolusField: withoutBolusField
+        ))
     }
 
     static func unscheduleUpdates() {
@@ -66,12 +89,14 @@ extension MedtrumKitPackets {
     /// none (0), and the CGM field's 5 bytes follow - a real patch's notification, byte for byte (device 2026-10-26).
     /// The full statuses after it have no basal field, and carry the patch age and the magneto placement (device
     /// 2026-11-03). The storage field names the newest record whenever the patch is past setup, the alarm field is
-    /// there while an alarm is (`alarmFlags`).
+    /// there while an alarm is (`alarmFlags`). `withoutBolusField`: a notification with no bolus field while a bolus
+    /// runs - the patch's other packets between a stalled bolus's steps (2026-10-13).
     static func generateSynchronizePacket(
         state: MedtrumKitState,
         longVersion: Bool = false,
         completedBolus: CompletedBolus? = nil,
-        haltNotification: Bool = false
+        haltNotification: Bool = false,
+        withoutBolusField: Bool = false
     ) -> Data {
         var fieldFlags: UInt16 = 0
         var data = Data([])
@@ -84,7 +109,7 @@ extension MedtrumKitPackets {
         if let completedBolus {
             fieldFlags |= Self.MASK_NORMAL_BOLUS
             data.append(bolusField(type: completedBolus.cause, completed: true, delivered: completedBolus.delivered))
-        } else if state.isDeliveringBasal, state.isBolusRunning {
+        } else if state.isDeliveringBasal, state.isBolusRunning, !withoutBolusField {
             fieldFlags |= Self.MASK_NORMAL_BOLUS
             data.append(bolusField(type: 0, completed: false, delivered: state.bolusProgress ?? 0))
         } else if longVersion, state.isDeliveringBasal {

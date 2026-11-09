@@ -57,6 +57,7 @@ extension MedtrumKitPackets {
         state.baseResetAt = nil
         state.activate(patchId: patchId, at: now)
         params.pumpManager.patchFaults.update { $0.recordFaultNumber = nil }
+        params.pumpManager.callOffPendingOcclusion("a new patch activated")
         state.patchState = .active
         state.activatedAt = now
         params.pumpManager.notifyStateDidUpdate()
@@ -91,6 +92,7 @@ extension MedtrumKitPackets {
             logger.info("Bolus cut by the stop at \(delivered)U")
         }
         params.pumpManager.state.stop(at: .now)
+        params.pumpManager.callOffPendingOcclusion("the patch is stopped")
 
         // The newest record, as the patch stops
         var response = Data()

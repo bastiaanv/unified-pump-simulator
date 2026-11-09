@@ -43,6 +43,8 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         var recordRows: [[String]] = []
         var stoppedPatchUntil: Date?
         var linkSilentUntil: Date?
+        /// What the running bolus does beyond the patch's pace (`BolusRun`)
+        var runningBolusFault: String?
     }
 
     private let snapshotLock = NSLock()
@@ -123,7 +125,8 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
             batteryLevel: "\(state.voltageB)V",
             recordRows: recordRows(),
             stoppedPatchUntil: state.stoppedPatchUntil,
-            linkSilentUntil: bluetooth.linkSilentUntil
+            linkSilentUntil: bluetooth.linkSilentUntil,
+            runningBolusFault: MedtrumKitPackets.bolusRun?.faultDescription
         )
         snapshotLock.withLock { _snapshot = snapshot }
     }
@@ -200,6 +203,7 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         capabilities.controlGroups.append(scenarioControls())
         capabilities.controlGroups.append(commandFaultControls())
         capabilities.controlGroups.append(patchFaultControls())
+        capabilities.controlGroups.append(bolusFaultControls())
         capabilities.lists.append(armedFaultList())
         capabilities.lists.append(recordList())
 
@@ -356,6 +360,7 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         state.patchState = .none
         state.reservoirLevel = 0
         state.baseResetAt = .now
+        callOffPendingOcclusion("the base restarted")
         notifyStateDidUpdate()
 
         logger.warning("[FAULT] The base restarted: state none, next patch id \(state.patchId), no session")
@@ -377,6 +382,7 @@ public class MedtrumKitPumpManager: PumpManagerProtocol {
         state.reservoirLevel = capacity
         // A record fault that stuck to a record of the old patch
         patchFaults.update { $0.recordFaultNumber = nil }
+        callOffPendingOcclusion("the base is on a new patch")
         notifyStateDidUpdate()
         if announce {
             MedtrumKitPackets.sendStatusUpdate()

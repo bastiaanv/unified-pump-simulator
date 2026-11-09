@@ -99,6 +99,13 @@ struct PatchFaultSettings {
     /// The reservoir shortcut: the units it leaves
     var reservoirShortcut: Double = 1
 
+    /// A bolus that stalls (`BolusStallSettings`), and an occlusion minutes after a bolus completed
+    var bolusStall = BolusStallSettings()
+    var delayedOcclusion = DelayedOcclusionSettings()
+    /// The occlusion one of those set for later, and why: the patch halts then (`MedtrumKitPumpManager.occludeLater`)
+    var pendingOcclusionAt: Date?
+    var pendingOcclusionReason = ""
+
     var isStatusGap: Bool {
         statusGapUntil.map { $0 > .now } ?? false
     }
@@ -138,6 +145,43 @@ final class MedtrumKitPatchFaults {
             settings.replaceDuringNextBolus = false
             settings.emptyRecordClaimsMore = false
             settings.stoppedPatchSeconds = 0
+            settings.bolusStall.scope = .off
+            settings.delayedOcclusion.scope = .off
+            settings.pendingOcclusionAt = nil
+        }
+    }
+
+    /// What a bolus of `amount` starting now takes of the bolus faults: a stall, or an occlusion minutes after it
+    /// completes - a stall's own alarm taking the place of that. One for the next bolus only is used up by a bolus it
+    /// applies to; a stall that would start past the bolus's end stays armed.
+    func takeBolusFaults(for amount: Double) -> (stall: BolusStallPlan?, occlusionMinutes: Double?, notes: [String]) {
+        lock.withLock {
+            var notes: [String] = []
+            var stall: BolusStallPlan?
+            if settings.bolusStall.scope != .off {
+                stall = settings.bolusStall.plan(for: amount)
+                if stall == nil {
+                    notes.append(
+                        "Bolus stall: this \(amount)U bolus ends before the stall would start" +
+                            (settings.bolusStall.scope == .nextBolus ? ", still armed" : "")
+                    )
+                } else if settings.bolusStall.scope == .nextBolus {
+                    settings.bolusStall.scope = .off
+                }
+            }
+
+            var minutes: Double?
+            if settings.delayedOcclusion.scope != .off {
+                if stall != nil {
+                    notes.append("Delayed occlusion: the stall's own alarm takes its place for this bolus")
+                } else {
+                    minutes = settings.delayedOcclusion.minutes
+                }
+                if settings.delayedOcclusion.scope == .nextBolus {
+                    settings.delayedOcclusion.scope = .off
+                }
+            }
+            return (stall, minutes, notes)
         }
     }
 
@@ -180,6 +224,26 @@ final class MedtrumKitPatchFaults {
         }
         if settings.dryDuringNextBolus {
             rows.append(["SetBolus", "the reservoir runs dry halfway through the next bolus"])
+        }
+        if settings.bolusStall.scope != .off {
+            rows.append([
+                "SetBolus",
+                "\(settings.bolusStall.scope == .nextBolus ? "the next bolus" : "every bolus") stalls " +
+                    settings.bolusStall.description,
+            ])
+        }
+        if settings.delayedOcclusion.scope != .off {
+            rows.append([
+                "SetBolus",
+                "\(settings.delayedOcclusion.scope == .nextBolus ? "the next bolus" : "every bolus"): " +
+                    settings.delayedOcclusion.description,
+            ])
+        }
+        if let at = settings.pendingOcclusionAt {
+            rows.append([
+                "Patch",
+                "occludes at \(MedtrumKitPumpManager.timeFormatter.string(from: at)): \(settings.pendingOcclusionReason)",
+            ])
         }
         if settings.emptyRecordClaimsMore {
             rows.append([

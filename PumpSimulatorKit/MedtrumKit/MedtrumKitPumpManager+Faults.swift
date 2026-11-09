@@ -81,6 +81,9 @@ extension MedtrumKitPumpManager {
 
             let snapshot = snapshot
             var rows = commandFaults.armed.map { [$0.name, $0.description] } + patchFaults.armed
+            if let fault = snapshot.runningBolusFault {
+                rows.insert(["Bolus", "the running bolus \(fault)"], at: 0)
+            }
             if let until = snapshot.linkSilentUntil {
                 rows.insert(["Link", "silent until \(Self.timeFormatter.string(from: until))"], at: 0)
             }

@@ -2,7 +2,7 @@ import Foundation
 
 extension MedtrumKitPackets {
     /// Delivers the running bolus, on the pump manager's queue
-    static var bolusTimer: DispatchSourceTimer?
+    static var bolusRun: BolusRun?
     private static let supportedBolusVolumes = (1 ... 600).map { Double($0) / 20 }
 
     /// Bolus causes, as the completion notification's type and the record carry them
@@ -56,6 +56,16 @@ extension MedtrumKitPackets {
                 pumpManager.putNewPatch(announce: true)
             }
         }
+        let bolusFaults = params.pumpManager.patchFaults.takeBolusFaults(for: amount)
+        for note in bolusFaults.notes {
+            logger.warning("[FAULT] \(note)")
+        }
+        if let stall = bolusFaults.stall {
+            logger.warning(
+                "[FAULT] This \(amount)U bolus stalls past \(stall.fromUnits)U: " +
+                    params.pumpManager.patchFaults.current.bolusStall.description
+            )
+        }
         if runsDry {
             // What is left is half the bolus: it is cut there (`scheduleBolus`)
             let half = max(0.05, roundToSupportedBolusVolume(amount / 2))
@@ -78,7 +88,13 @@ extension MedtrumKitPackets {
             params.responseParam
         )
 
-        scheduleBolus(amount: amount, startTime: startTime, pumpManager: params.pumpManager)
+        scheduleBolus(
+            amount: amount,
+            startTime: startTime,
+            stall: bolusFaults.stall,
+            occlusionMinutes: bolusFaults.occlusionMinutes,
+            pumpManager: params.pumpManager
+        )
 
         logger.info("Processed Start bolus message! \(amount)U, the answer names record #\(recordNumber)")
     }
@@ -125,58 +141,31 @@ extension MedtrumKitPackets {
     }
 
     static func stopBolusTimer() {
-        bolusTimer?.cancel()
-        bolusTimer = nil
+        bolusRun?.cancel()
+        bolusRun = nil
     }
 
-    private static func scheduleBolus(amount: Double, startTime: Date, pumpManager: MedtrumKitPumpManager) {
-        // 1.5 unit per minute
-        let duration = amount / 1.5 * TimeInterval(minutes: 1)
-        let endTime = startTime.addingTimeInterval(duration)
+    /// The patch's pace: a 0.05 U step every 2 s - 1.5 U a minute
+    static let bolusStepUnits = 0.05
+    static let bolusStepInterval: TimeInterval = 2
 
+    private static func scheduleBolus(
+        amount: Double,
+        startTime: Date,
+        stall: BolusStallPlan?,
+        occlusionMinutes: Double?,
+        pumpManager: MedtrumKitPumpManager
+    ) {
         stopBolusTimer()
-        bolusTimer = repeatingTimer(on: pumpManager.queue, every: 2.0) {
-            let state = pumpManager.state
-            // Ended meanwhile - cancelled, cut short - or another patch
-            guard state.isBolusRunning, state.bolusStart == startTime else {
-                stopBolusTimer()
-                return
-            }
-
-            let progressPercentage = Date.now.timeIntervalSince(startTime) / endTime.timeIntervalSince(startTime)
-            let progress = min(amount, roundToSupportedBolusVolume(amount * progressPercentage))
-
-            // What the reservoir holds for the bolus: short of it, the patch runs dry with the bolus cut at that. One
-            // that empties it exactly completes, the basal then runs dry (`MedtrumKitState.advance`).
-            let available = state.insulinForBolus(at: .now)
-            if available < amount, progress >= available {
-                state.bolusProgress = available
-                stopBolusTimer()
-                pumpManager.runDry()
-                return
-            }
-
-            state.bolusProgress = progress
-            state.noteLowReservoir(at: .now)
-
-            guard progressPercentage >= 1.0 else {
-                pumpManager.notifyStateDidUpdate()
-                sendStatusUpdate()
-                return
-            }
-
-            stopBolusTimer()
-
-            // Records that ran out meanwhile first, then the bolus: written as it completes, so the completion
-            // notification already names its record. Those may have ended it - the basal ran dry first.
-            pumpManager.advanceDelivery()
-            guard state.isBolusRunning, state.bolusStart == startTime else {
-                return
-            }
-            state.finishBolus(delivered: amount, cause: bolusCompleted, at: .now)
-            pumpManager.notifyStateDidUpdate()
-            sendStatusUpdate(completedBolus: CompletedBolus(cause: bolusCompleted, delivered: amount))
-        }
+        let run = BolusRun(
+            amount: amount,
+            startTime: startTime,
+            stall: stall,
+            occlusionMinutes: occlusionMinutes,
+            pumpManager: pumpManager
+        )
+        bolusRun = run
+        run.start()
     }
 
     /// A timer firing on `queue` every `interval`, the first time `interval` from now

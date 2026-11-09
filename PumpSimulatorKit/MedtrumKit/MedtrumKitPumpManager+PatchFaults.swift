@@ -218,6 +218,7 @@ extension MedtrumKitPumpManager {
     /// Patch faults back to off, the UI following
     func resetPatchFaults() {
         patchFaults.reset()
+        MedtrumKitPackets.bolusRun?.callOff()
         applyPatchFaultsToState()
         endLingeringStoppedPatch()
         notifyStateDidUpdate()

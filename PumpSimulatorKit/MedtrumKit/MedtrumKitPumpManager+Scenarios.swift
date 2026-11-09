@@ -149,6 +149,58 @@ extension MedtrumKitPumpManager {
                 }
             })]
         ),
+        Scenario(
+            name: "Bolus stall as on 2026-10-13",
+            detail: "Bolus 5 U. The patch's pace up to 3.5 U, then a 0.1 U step every 40 s, 2 s less each, its other " +
+                "packets every 8 s in between. It completes in full after about 8 min, and the patch occludes 205 s " +
+                "later. The next bolus only.",
+            buttons: [("Arm", { pumpManager in
+                pumpManager.armStall {
+                    $0.start = .units
+                    $0.startUnits = 3.5
+                    $0.interval = 40
+                    $0.shrink = 2
+                    $0.alarm = .afterCompletion
+                    $0.alarmDelay = 205
+                }
+            })]
+        ),
+        Scenario(
+            name: "Bolus stall, no alarm",
+            detail: "Bolus 2 U or more. From 70% of it, a 0.1 U step every 40 s to its completion in full; the patch " +
+                "never occludes. Between the steps a notification without the bolus field every 8 s - \"Steps " +
+                "only\": nothing at all, not even the heartbeat. The next bolus only.",
+            buttons: [
+                ("Arm", { pumpManager in pumpManager.armStall { _ in } }),
+                ("Steps only", { pumpManager in pumpManager.armStall { $0.stepsOnly = true } }),
+            ]
+        ),
+        Scenario(
+            name: "Bolus stall that ends",
+            detail: "Bolus 2 U or more. From 70% of it, a 0.1 U step every 40 s, the other packets every 8 s. " +
+                "\"Resumes\": the patch's pace again after 3 slow steps, on to a normal completion. \"Occludes\": " +
+                "the patch occludes after 3 slow steps, the bolus cut there (cause 9). The next bolus only.",
+            buttons: [
+                ("Resumes", { pumpManager in pumpManager.armStall { $0.resumeAfter = 3 } }),
+                ("Occludes", { pumpManager in
+                    pumpManager.armStall {
+                        $0.alarm = .duringStall
+                        $0.alarmAfterSlowSteps = 3
+                    }
+                }),
+            ]
+        ),
+        Scenario(
+            name: "Delayed occlusion",
+            detail: "Bolus. It runs and completes in full at the patch's pace; 3 min after its completion the patch " +
+                "occludes (state 96, alarm bit 6): the segment's record (STOP_OCCLUSION), DAILY, ALARM bit 6.",
+            buttons: [("Arm", { pumpManager in
+                pumpManager.patchFaults.update {
+                    $0.delayedOcclusion.scope = .nextBolus
+                    $0.delayedOcclusion.minutes = 3
+                }
+            })]
+        ),
     ]
 
     func scenarioControls() -> PumpManagerControlGroup {
@@ -203,6 +255,7 @@ extension MedtrumKitPumpManager {
         patchFaults.reset()
         queue.async { [self] in
             bluetooth.endSilence()
+            MedtrumKitPackets.bolusRun?.callOff()
             applyPatchFaultsToState()
             endLingeringStoppedPatch()
             if log {
@@ -218,6 +271,24 @@ extension MedtrumKitPumpManager {
         queue.async { [self] in
             logger.warning("[SCENARIO] The base is on a new patch: the old one was never stopped")
             putNewPatch(announce: true)
+        }
+    }
+
+    /// A stall for the next bolus: the variants' defaults - from 70% of it, a step every 40 s, other packets every 8 s,
+    /// no resume, no alarm - changed by `configure`
+    private func armStall(_ configure: (inout BolusStallSettings) -> Void) {
+        patchFaults.update { settings in
+            var stall = settings.bolusStall
+            stall.scope = .nextBolus
+            stall.start = .fraction
+            stall.startPercent = 70
+            stall.interval = 40
+            stall.shrink = 0
+            stall.stepsOnly = false
+            stall.resumeAfter = 0
+            stall.alarm = .none
+            configure(&stall)
+            settings.bolusStall = stall
         }
     }
 
