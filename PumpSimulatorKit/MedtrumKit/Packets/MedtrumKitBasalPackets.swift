@@ -2,6 +2,10 @@ import Foundation
 
 extension MedtrumKitPackets {
     static func parseBasalSchedulePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        guard acceptsDeliveryCommand(params, bluetoothManager, "basal schedule") else {
+            return
+        }
+
         let basalEntries = Int(params.data[5])
         var basalSchedule: [BasalItem] = []
         for i in 0 ..< basalEntries {
@@ -12,17 +16,13 @@ extension MedtrumKitPackets {
             basalSchedule.append(BasalItem(start: time, rate: rate))
         }
 
-        params.pumpManager.state.basal = basalSchedule
+        let state = params.pumpManager.state
+        // The segment so far is written at the rates it ran at
+        state.basalProfileChanged(at: .now)
+        state.basal = basalSchedule
         params.pumpManager.notifyStateDidUpdate()
 
-        let rate = params.pumpManager.state.currentBaseBasalRate
-        var response = Data([BasalType.STANDARD.rawValue])
-        response.append(UInt16(rate / 0.05).toData())
-        response.append(params.pumpManager.state.patchSequence.toData())
-        response.append(UInt16(params.pumpManager.state.patchId).toData())
-        response.append(Date.now.toMedtrumSeconds())
-
-        bluetoothManager.writeResponse(data: response, status: .ok, params.responseParam)
+        bluetoothManager.writeResponse(data: segmentAnswer(state), status: .ok, params.responseParam)
         logger.info("Processed Basal schedule message!")
     }
 
@@ -37,22 +37,22 @@ extension MedtrumKitPackets {
             return
         }
 
-        params.pumpManager.state.patchState = .suspended
-        params.pumpManager.state.suspendedSince = Date.now
-        params.pumpManager.state.suspendedDuration = TimeInterval(minutes: Double(params.data[5]))
-        params.pumpManager.state.tempBasalStart = nil
-        params.pumpManager.state.tempBasalRate = nil
-        params.pumpManager.state.tempBasalDuration = nil
+        // A running bolus stops with the rest of the delivery, as at a halt: its record first, then the segment's
+        let delivered = endBolus(pumpManager: params.pumpManager, cause: bolusInterrupted)
+        params.pumpManager.state.suspend(for: TimeInterval(minutes: Double(params.data[5])), at: .now)
         params.pumpManager.notifyStateDidUpdate()
 
         bluetoothManager.writeResponse(data: Data(), status: .ok, params.responseParam)
         bluetoothManager.writeResponse(
-            data: MedtrumKitPackets.generateSynchronizePacket(state: params.pumpManager.state),
+            data: MedtrumKitPackets.generateSynchronizePacket(
+                state: params.pumpManager.state,
+                completedBolus: delivered.map { CompletedBolus(cause: bolusInterrupted, delivered: $0) }
+            ),
             status: .stateUpdate,
             params.updateParam
         )
 
-        logger.info("Processed Suspend message!")
+        logger.info("Processed Suspend message!\(delivered.map { " Bolus cut at \($0)U" } ?? "")")
     }
 
     static func parseResumePacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
@@ -66,14 +66,12 @@ extension MedtrumKitPackets {
             return
         }
 
-        params.pumpManager.state.patchState = .active
-        params.pumpManager.state.suspendedSince = nil
-        params.pumpManager.state.tempBasalStart = nil
-        params.pumpManager.state.tempBasalRate = nil
-        params.pumpManager.state.tempBasalDuration = nil
+        let state = params.pumpManager.state
+        state.resume(at: .now)
         params.pumpManager.notifyStateDidUpdate()
 
-        bluetoothManager.writeResponse(data: Data(), status: .ok, params.responseParam)
+        // Laid out as the answer to CancelTempBasal: the segment the patch resumed with
+        bluetoothManager.writeResponse(data: segmentAnswer(state), status: .ok, params.responseParam)
         bluetoothManager.writeResponse(
             data: MedtrumKitPackets.generateSynchronizePacket(state: params.pumpManager.state),
             status: .stateUpdate,
@@ -83,27 +81,39 @@ extension MedtrumKitPackets {
     }
 
     static func parseStopTempBasalPacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
-        params.pumpManager.state.patchState = .active
-        params.pumpManager.state.suspendedSince = nil
-        params.pumpManager.state.tempBasalStart = nil
-        params.pumpManager.state.tempBasalDuration = nil
-        params.pumpManager.state.tempBasalRate = nil
+        guard acceptsDeliveryCommand(params, bluetoothManager, "cancel temp basal") else {
+            return
+        }
+
+        let state = params.pumpManager.state
+        if !state.isDeliveringBasal || state.tempBasalRate == nil {
+            bluetoothManager.skipFault("no temp basal to cancel")
+        }
+        state.cancelTempBasal(at: .now)
         params.pumpManager.notifyStateDidUpdate()
 
-        let rate = params.pumpManager.state.currentBaseBasalRate
-
-        var response = Data([BasalType.ABSOLUTE_TEMP.rawValue])
-        response.append(UInt16(rate / 0.05).toData())
-        response.append(params.pumpManager.state.patchSequence.toData())
-        response.append(UInt16(params.pumpManager.state.patchId).toData())
-        response.append(Date.now.toMedtrumSeconds())
-
-        bluetoothManager.writeResponse(data: response, status: .ok, params.responseParam)
+        // The schedule's segment that took over, and the record of the temp basal it ended
+        bluetoothManager.writeResponse(data: segmentAnswer(state), status: .ok, params.responseParam)
         logger.info("Processed Stop TempBasal message!")
     }
 
     static func parseTempBasalPacket(_ params: MedtrumKitPacketRequest, _ bluetoothManager: MedtrumKitBluetoothManager) {
+        // The rate in the patch's 0.05 U/h steps, all the command carries, and the minutes
+        let steps = params.data.toUInt16(offset: 5)
+        let duration = params.data.toUInt16(offset: 7)
+        let refuse = { (why: String) in
+            params.pumpManager.noteReceivedDose(
+                "SetTempBasal",
+                steps: steps,
+                unit: "U/h",
+                minutes: duration,
+                result: "refused (code 8): \(why)"
+            )
+            params.pumpManager.notifyStateDidUpdate()
+        }
+
         guard params.pumpManager.state.patchState == .active else {
+            refuse("the patch is \(params.pumpManager.state.patchState.title)")
             logger.warning("Rejecting temp basal during non-active state...")
             bluetoothManager.writeResponse(
                 data: Data(),
@@ -115,28 +125,71 @@ extension MedtrumKitPackets {
 
         let currentRate = params.pumpManager.state.currentBaseBasalRate
         guard currentRate > 0 else {
+            refuse("no basal schedule")
             bluetoothManager.writeResponse(data: Data(), status: .invalidState, params.responseParam)
             logger.info("Cannot set temp basal without basal")
             return
         }
 
-        let rate = Double(params.data.toUInt16(offset: 5)) * 0.05
-        let duration = params.data.toUInt16(offset: 7)
+        // Above the base's maximum, or for no time: refused as real patches refuse a command they can't run - what a
+        // real one answers to these is not on record. A rate of 0 is a zero temp, taken.
+        let maximum = params.pumpManager.maximumTempBasalSteps
+        guard steps <= maximum, duration > 0 else {
+            let why = duration == 0 ? "no duration" : "above the \(String(format: "%g", Double(maximum) * 0.05)) U/h maximum"
+            refuse(why)
+            logger.warning("Rejecting a temp basal of \(steps) steps for \(duration) min: \(why)")
+            bluetoothManager.writeResponse(data: Data(), status: .invalidState, params.responseParam)
+            return
+        }
 
-        params.pumpManager.state.patchState = .active
-        params.pumpManager.state.suspendedSince = nil
-        params.pumpManager.state.tempBasalStart = Date.now
-        params.pumpManager.state.tempBasalDuration = TimeInterval(minutes: Double(duration))
-        params.pumpManager.state.tempBasalRate = rate
+        let rate = Double(steps) * 0.05
+
+        let state = params.pumpManager.state
+        state.setTempBasal(rate: rate, duration: TimeInterval(minutes: Double(duration)), at: .now)
+        params.pumpManager.noteReceivedDose(
+            "SetTempBasal",
+            steps: steps,
+            unit: "U/h",
+            minutes: duration,
+            result: "running: statuses and its record carry \(UInt16((state.segmentRate / 0.05).rounded())) steps"
+        )
         params.pumpManager.notifyStateDidUpdate()
 
-        var response = Data([BasalType.ABSOLUTE_TEMP.rawValue])
-        response.append(UInt16(rate / 0.05).toData())
-        response.append(params.pumpManager.state.patchSequence.toData())
-        response.append(UInt16(params.pumpManager.state.patchId).toData())
-        response.append(Date.now.toMedtrumSeconds())
-
-        bluetoothManager.writeResponse(data: response, status: .ok, params.responseParam)
+        // The temp basal that started, and the record of the segment it ended
+        bluetoothManager.writeResponse(data: segmentAnswer(state), status: .ok, params.responseParam)
         logger.info("Processed TempBasal message!")
+    }
+
+    /// Whether the patch takes a delivery command it may have nothing to run for - a cancel, a new schedule. It does
+    /// while it runs or is halted (answered as "nothing to do" if so); one stopped, or a base with no patch activated -
+    /// set up, or restarted - refuses it with code 8, the refusal real patches answer a command they can't run with.
+    /// Answered here if refused.
+    static func acceptsDeliveryCommand(
+        _ params: MedtrumKitPacketRequest,
+        _ bluetoothManager: MedtrumKitBluetoothManager,
+        _ what: String
+    ) -> Bool {
+        let state = params.pumpManager.state
+        guard state.patchState == .stopped || state.patchState.rawValue < PatchState.active.rawValue else {
+            return true
+        }
+
+        logger.warning("Rejecting \(what) in state \(state.patchState.title): no patch running")
+        bluetoothManager.writeResponse(data: Data(), status: .invalidState, params.responseParam)
+        return false
+    }
+
+    /// The answer to the commands that start a basal segment: its type, rate, the record of the segment it replaced
+    /// (`basalSequence`), the patch id and its start
+    static func segmentAnswer(_ state: MedtrumKitState) -> Data {
+        // Suspended, nothing runs: the schedule as it would resume
+        let delivering = state.isDeliveringBasal
+
+        var response = Data([delivering ? state.segmentType.rawValue : BasalType.STANDARD.rawValue])
+        response.append(UInt16(((delivering ? state.segmentRate : state.currentBaseBasalRate) / 0.05).rounded()).toData())
+        response.append(state.basalSequence.toData())
+        response.append(UInt16(truncatingIfNeeded: state.patchId).toData())
+        response.append((delivering ? state.basalSince : Date.now).toMedtrumSeconds())
+        return response
     }
 }

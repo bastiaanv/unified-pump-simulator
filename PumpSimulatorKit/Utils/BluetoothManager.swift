@@ -4,8 +4,23 @@ protocol BluetoothManagerDelegate {
     func didStartAdvertising(_ error: (any Error)?)
     func didReceiveWrite(_ peripheral: CBPeripheralManager, characteristic: CBCharacteristic, data: Data, request: CBATTRequest)
     func didReceiveSubscribe(central: CBCentral, peripheralManager: CBPeripheralManager)
+    /// The same, naming the characteristic subscribed to - by default the call above
+    func didReceiveSubscribe(central: CBCentral, to characteristic: CBCharacteristic, peripheralManager: CBPeripheralManager)
     func didUnsubscribe(central: CBCentral)
     func readyForNextMessage(_ peripheral: CBPeripheralManager)
+    /// Bluetooth's state changed. Below `poweredOn`, every connected central has been disconnected - whether or not
+    /// `didUnsubscribe` is called for it.
+    func didUpdateState(_ state: CBManagerState)
+}
+
+extension BluetoothManagerDelegate {
+    func didReceiveSubscribe(central _: CBCentral, peripheralManager _: CBPeripheralManager) {}
+
+    func didReceiveSubscribe(central: CBCentral, to _: CBCharacteristic, peripheralManager: CBPeripheralManager) {
+        didReceiveSubscribe(central: central, peripheralManager: peripheralManager)
+    }
+
+    func didUpdateState(_: CBManagerState) {}
 }
 
 public class PumpBluetoothmanager: NSObject {
@@ -51,6 +66,7 @@ public class PumpBluetoothmanager: NSObject {
 extension PumpBluetoothmanager: CBPeripheralManagerDelegate {
     public func peripheralManagerDidUpdateState(_ peripheral: CBPeripheralManager) {
         logger.info("peripheralManagerDidUpdateState: \(peripheral.state.rawValue)")
+        bluetoothManagerDelegate?.didUpdateState(peripheral.state)
     }
 
     public func peripheralManager(_: CBPeripheralManager, didAdd _: CBService, error: (any Error)?) {
@@ -65,7 +81,7 @@ extension PumpBluetoothmanager: CBPeripheralManagerDelegate {
         didSubscribeTo characteristic: CBCharacteristic
     ) {
         logger.debug("Received subscription from \(central) on \(characteristic.uuid.uuidString)")
-        bluetoothManagerDelegate?.didReceiveSubscribe(central: central, peripheralManager: peripheralManager)
+        bluetoothManagerDelegate?.didReceiveSubscribe(central: central, to: characteristic, peripheralManager: peripheralManager)
     }
 
     public func peripheralManager(
